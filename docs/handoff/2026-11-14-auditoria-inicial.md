@@ -123,3 +123,33 @@ Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projeto
 ```
 Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -5, python3 -m unittest discover -s tests, curl localhost:8730/api/projetos, git ls-remote kratos). Branch correcoes-auditoria, remote kratos (privado); nunca enviar para origin. Próximos: drift de docs e, com o meu ok, um teste de ponta a ponta com uma geração real barata.
 ```
+
+---
+
+# Atualização 3 (mesma sessão) — teste real de ponta a ponta e docs
+
+## Teste real (autorizado pelo usuário)
+
+- Projeto `teste-e2e` (prefixo TES) criado pela API do servidor real; pedido TES-003 criado e enviado pela API (linha na `fila.jsonl`), `neo.py pegar`, `gerar.py --prompt …` com o modelo `flash` (`google/gemini-3.1-flash-image`).
+- Saída: `TES-004 ok 0.0672185` · `TES-003: 1/1 imagens · $0.067`, exit 0. Pedido `concluido`; imagem 1376×768 com arquivo, thumb, custo e 10,5 s; `/projects/teste-e2e/images/TES-004.png` → 200 `image/png` 827 kB; custos do projeto `{total: 0.0672, hoje: 0.0672}`.
+- Custo total da sessão em APIs: US$ 0,067. O projeto `teste-e2e` ficou em `projects/` (fora do git).
+- A tabela `MODELOS` em `base.py` estima o `flash` em $0,04; a cobrança real foi $0,067. Não alterei a tabela (um ponto de dado só).
+- Não testado com geração real: vídeo (`gerar_video.py`), várias referências, modelos 3D.
+
+## Docs atualizados
+
+- `README.md`: requisito do Chrome; atalhos reais (`D`, `⌫`, `⌘A` = pinados; sai `F`/`A`); skills `img2html`/`video2html` não vêm no repo; como soltar pedido preso; seções "Só local" e "Testes"; `tests/` na estrutura.
+- `AGENTS.md`, `CLAUDE.md`, `.claude/skills/neo-stitch/SKILL.md`: guarda de execução dupla e `neo.py erro`; rodar os testes; regra de `so_do_app` e de tipo de nó novo.
+- `specs.md`: nota datada da auditoria. `ferramentas/impl.py:106`: "seção 4" → "seção 5".
+
+## Itens abertos
+
+- Divisão do contexto/memo dos nós; `emLote` capturando ações alheias; bundle único de 515 kB.
+- SIGTERM nos geradores pula o `finally`.
+- Conferir o preço do `flash` na tabela `MODELOS`.
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -6, python3 -m unittest discover -s tests, curl localhost:8730/api/projetos, git ls-remote kratos). Branch correcoes-auditoria, remote kratos (privado); nunca enviar para origin. Geração real só com o meu ok. Próximos: desempenho do canvas (contexto/memo dos nós) e o preço do flash em MODELOS.
+```

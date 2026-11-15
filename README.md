@@ -115,7 +115,7 @@ Testamos os 25 modelos de image-to-video do OpenRouter em quatro telas. O que im
 
 - **Árvore de ideias** que se arranja sozinha: empilhada, em grade ou em blocos 3×3 / 4×4 / 5×5. Arraste qualquer nó e o galho vai junto.
 - **Pedidos como pontos:** o pedido concluído encolhe num ponto sobre a linha (passe o mouse para ver o card), e a árvore fica só com as imagens.
-- **Recolher com intenção:** cada galho fecha numa pílula com a contagem; `⌘1`/`⌘2`/`⌘3` mostram uma geração de cada vez; `⌘A` deixa só o caminho até as aprovadas.
+- **Recolher com intenção:** cada galho fecha numa pílula com a contagem; `⌘1`/`⌘2`/`⌘3` mostram uma geração de cada vez; `⌘A` deixa só o caminho até os pinados.
 - **Visualizador** com comentários em pontos da imagem (ou em segundos do vídeo), "Veio de" / "Saiu daqui" e um filme estilo Finder com as irmãs.
 - **Pedidos de vídeo** com vários modelos, duração, resolução e estimativa de custo antes de enviar.
 - **Design systems:** páginas prontas viram um catálogo (Overview e Components), num cartão destacado e em categoria própria no filtro.
@@ -126,7 +126,7 @@ Testamos os 25 modelos de image-to-video do OpenRouter em quatro telas. O que im
 
 ## Instalação
 
-**Requisitos:** macOS (as miniaturas usam o `sips`), [uv](https://docs.astral.sh/uv/) com Python 3.11+, Node 20+, [Claude Code](https://claude.com/claude-code), uma chave do [OpenRouter](https://openrouter.ai/) e, para as capas dos vídeos, `ffmpeg`.
+**Requisitos:** macOS (as miniaturas usam o `sips`), [uv](https://docs.astral.sh/uv/) com Python 3.11+, Node 20+, [Claude Code](https://claude.com/claude-code), uma chave do [OpenRouter](https://openrouter.ai/), `ffmpeg` (para as capas dos vídeos) e o Google Chrome em `/Applications` (o servidor tira com ele os prints das páginas HTML; sem o Chrome, o cartão mostra a imagem de origem).
 
 ```bash
 git clone https://github.com/rtadewald/neo-stitch.git
@@ -153,9 +153,10 @@ Para mexer no app com recarga instantânea: `npm --prefix app run dev` (porta 51
 |---|---|
 | `N` | Novo pedido com a seleção (imagens e referências) |
 | `V` | Pedido de vídeo a partir da imagem selecionada |
-| `F` · `A` · `D` | Favorita · aprova · descarta |
-| `⌘A` | Só o caminho até as aprovadas |
-| `⌘1` `⌘2` `⌘3` | Mostra uma, duas ou três gerações |
+| `D` | Descarta a seleção (o que importa você pina, com o alfinete) |
+| `⌫` | Apaga a seleção e o galho dela (pede confirmação; vai para a lixeira) |
+| `⌘A` | Só o caminho até os pinados |
+| `⌘1` `⌘2` `⌘3` (ou `1` `2` `3`) | Mostra uma, duas ou três gerações |
 | `⌘Z` · `⌘⇧Z` | Desfaz · refaz |
 | `⌘V` | Cola uma imagem como referência, embaixo do cursor |
 | roda do mouse · arrastar | Zoom · navegar |
@@ -177,6 +178,22 @@ uv run ferramentas/gerar_video.py JAR-122 --prompt-arquivo prompt.txt   # um ví
 
 Os mesmos comandos funcionam pelo chat: "gera 3 variações da JAR-042 mais neon" cria o pedido no canvas, com a linhagem.
 
+As skills `img2html` e `video2html`, que fazem o HTML, são skills globais do autor e não vêm neste repositório. Sem elas, qualquer agente segue o [docs/AGENTES.md](docs/AGENTES.md).
+
+Se um pedido ficar preso em "trabalhando" (a geração foi morta no meio), solte-o com `uv run ferramentas/neo.py erro <PEDIDO> "motivo"`: ele volta como erro e pode ser reenviado. O `gerar.py` e o `gerar_video.py` recusam rodar num pedido que já tem saídas sendo geradas, para não pagar duas vezes.
+
+## Só local
+
+O servidor escuta em `127.0.0.1` e recusa qualquer pedido cujo `Host` ou `Origin` não seja `localhost`/`127.0.0.1`, na API e nos arquivos dos projetos: um site aberto no navegador não lê os projetos nem põe pedidos na fila. A linha de comando (`curl`, os scripts) segue funcionando.
+
+## Testes
+
+```bash
+python3 -m unittest discover -s tests     # ou: uvx pytest tests
+```
+
+Só biblioteca padrão. Rodam num `projects/` temporário e com o cliente do OpenRouter trocado: não tocam nos seus projetos nem gastam nada.
+
 ## Estrutura
 
 ```
@@ -187,6 +204,7 @@ ferramentas/          Python, só biblioteca padrão (uv run)
   gerar.py            imagens (OpenRouter /images, em paralelo, várias referências)
   gerar_video.py      vídeos (OpenRouter /videos, assíncrono, vários modelos)
   openrouter.py       cliente HTTP mínimo
+tests/                testes do servidor e dos scripts (unittest)
 app/src/              Vite + React 19 + React Flow 12
   Canvas.tsx          o canvas: árvore, atalhos, seleção, menu, organização
   nodes.tsx           os nós: brief, tela, pedido, imagem, referência, vídeo, design system

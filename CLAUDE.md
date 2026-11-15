@@ -19,6 +19,8 @@ Canvas local para explorar interfaces: imagem → vídeo → HTML vivo. **Antes 
 - `projects/<slug>/` — os dados (um JSON por nó, imagens, vídeos, modelos 3D em models/, thumbs, refs, impl/, design systems em ds/, brief.md, lixeira/). Não versionar.
 - `docs/` — o que o README mostra (demo, evolução imagem → vídeo → HTML) e o guia de uso (`docs/USO.md`).
 - `fila.jsonl` — fila append-only que o app escreve e o Claude ouve (`tail -F`).
+- `tests/` — testes do servidor e dos scripts (só biblioteca padrão): `python3 -m unittest discover -s tests`. Rodam num
+  `projects/` temporário e sem chamar o OpenRouter. Rode antes de commitar qualquer mudança em `ferramentas/`.
 
 ## Regras
 
@@ -26,3 +28,7 @@ Canvas local para explorar interfaces: imagem → vídeo → HTML vivo. **Antes 
 - Toda escrita em nó passa por `base.travado(slug)` + `gravar_json` (o app e os scripts escrevem ao mesmo tempo).
 - O app é tema claro e minimalista: ícones com `title`, sem texto onde um componente se explica.
 - A chave `OPENROUTER_API_KEY` vem de `~/.env` (ou `.env` aqui) — nunca imprima nem commite.
+- O servidor é só local: toda rota `/api` e `/projects` passa por `so_do_app` (Host e Origin locais). Uma rota nova não
+  pode escapar disso.
+- Um tipo de nó novo entra em todos os lugares que listam tipos: `TIPOS_NO`, `custos()` e `galho()` (`base.py`),
+  `CAMPOS_APP` (`servidor.py`) e `arvore()` (`app/src/layout.ts`). O `galho()` tem de seguir a `arvore()`.

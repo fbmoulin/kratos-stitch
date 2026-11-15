@@ -103,7 +103,7 @@ def cmd_iniciar(a):
 
 def lembrete(cod: str) -> str:
     """O que todo agente precisa fazer até o fim (repetido na saída de iniciar e evoluir)."""
-    return f"""Obrigatório até o fim (AGENTS.md, seção 4):
+    return f"""Obrigatório até o fim (AGENTS.md, seção 5):
   1. a cada etapa (no máx. 10 min):  uv run ferramentas/impl.py etapa {cod} "…" --progresso 0.3 --custo <total US$>
   2. toda imagem gerada:             uv run ferramentas/impl.py asset {cod} <png> --nome "…" --custo <US$> [--usa]
      todo modelo 3D gerado:          uv run ferramentas/impl.py asset {cod} <glb> --nome "…" --de <CÓD> --capa <png> --custo <US$>

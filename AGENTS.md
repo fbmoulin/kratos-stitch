@@ -30,7 +30,8 @@ Para subir o app: `uv run ferramentas/servidor.py` (porta 8730; outra porta: `�
    página sai dele.
 
 Mais três: o conteúdo é em português (PT-BR); as chaves (`OPENROUTER_API_KEY`, `FAL_KEY`) vêm do `.env` daqui ou de `~/.env` (o usuário as define em **Config**, no app) e nunca
-são impressas nem commitadas; não mexa no código do app (`app/`, `ferramentas/`) se a tarefa for de conteúdo.
+são impressas nem commitadas; não mexa no código do app (`app/`, `ferramentas/`) se a tarefa for de conteúdo; se mexer,
+rode `python3 -m unittest discover -s tests` antes de terminar.
 
 ## 3. O modelo
 
@@ -76,6 +77,10 @@ uv run ferramentas/gerar_video.py JAR-0XX --prompt-arquivo prompt.txt
 
 `gerar.py` e `gerar_video.py` gravam o custo sozinhos. Como escrever bons prompts: skill `neo-stitch`
 (`.claude/skills/neo-stitch/SKILL.md`).
+
+Os dois recusam rodar num pedido que já tem saídas sendo geradas (outra execução em andamento). Se a outra morreu e o
+pedido ficou preso, solte-o com `uv run ferramentas/neo.py erro <PEDIDO> "motivo"` e rode de novo. Sem a chave, eles
+devolvem o pedido como erro e não criam nada.
 
 ## 5. Páginas: um vídeo vira HTML vivo
 
