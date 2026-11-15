@@ -138,8 +138,8 @@ function NovoProjeto({ fechar }: { fechar: () => void }) {
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) criar() }} />
         {erro && <p className="erro-texto">{erro}</p>}
         <div className="modal-acoes">
-          <span className="mudo">{descricao.trim() ? 'O Claude propõe direções de estilo ao criar' : ''}</span>
-          <button type="submit" className="enviar" disabled={!nome.trim() || indo} title="Criar (⌘↵)"><ArrowUp size={18} /></button>
+          <span className="mudo">{!descricao.trim() ? '' : nome.trim() ? 'O Claude propõe direções de estilo ao criar' : 'Falta o nome do projeto, no campo de cima'}</span>
+          <button type="submit" className="enviar" disabled={!nome.trim() || indo} title={nome.trim() ? 'Criar (⌘↵)' : 'Dê um nome ao projeto para criar'}><ArrowUp size={18} /></button>
         </div>
       </form>
     </div>
