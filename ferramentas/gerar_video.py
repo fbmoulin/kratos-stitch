@@ -78,6 +78,36 @@ def plano(m: dict, duracao: int, resolucao: str) -> dict:
             'audio_controlavel': m.get('generate_audio') is not None}
 
 
+def sondar(arq: Path) -> dict | None:
+    """{largura, altura, audio} do arquivo, pelo ffprobe (a API não diz o tamanho do que gerou). None sem o ffprobe ou se
+    o arquivo não for um vídeo."""
+    if not shutil.which('ffprobe'):
+        return None
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,width,height', '-of', 'json', str(arq)],
+                       capture_output=True, text=True, check=False)
+    try:
+        faixas = json.loads(r.stdout).get('streams') or []
+    except ValueError:
+        return None
+    video = next((f for f in faixas if f.get('codec_type') == 'video' and f.get('width') and f.get('height')), None)
+    if not video:
+        return None
+    return {'largura': video['width'], 'altura': video['height'], 'audio': any(f.get('codec_type') == 'audio' for f in faixas)}
+
+
+def tirar_audio(arq: Path) -> None:
+    """Tira a trilha de áudio sem recodificar o vídeo. Alguns modelos mandam áudio mesmo sem ser pedido (o catálogo não
+    diz se dá para desligar), e ninguém o pediu: o app toca mudo. Se o ffmpeg falhar, o arquivo fica como veio."""
+    if not shutil.which('ffmpeg'):
+        return
+    tmp = arq.with_suffix('.mudo.mp4')
+    r = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(arq), '-an', '-c', 'copy', str(tmp)], capture_output=True, check=False)
+    if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
+        os.replace(tmp, arq)
+    else:
+        tmp.unlink(missing_ok=True)
+
+
 def gerar_um(p: dict, prompt: str, url_img: str, proporcao: str, key: str, destino: Path, capa: Path | None) -> dict:
     """Um vídeo: cria o job, acompanha até terminar, baixa o .mp4 (e a capa, um quadro do meio, se houver ffmpeg)."""
     corpo = {'model': p['modelo'], 'prompt': prompt, 'aspect_ratio': proporcao,
@@ -107,6 +137,10 @@ def gerar_um(p: dict, prompt: str, url_img: str, proporcao: str, key: str, desti
         else:
             destino.write_bytes(pedir('GET', f'/videos/{job["id"]}/content?index=0', key, bruto=True))
             r['arquivo'] = destino.name
+            if info := sondar(destino):
+                r['largura'], r['altura'] = info['largura'], info['altura']
+                if info['audio']:
+                    tirar_audio(destino)
             if capa and shutil.which('ffmpeg'):
                 meio = max(0.5, (p['duracao'] or 6) / 2)
                 subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', str(meio), '-i', str(destino), '-frames:v', '1', '-vf', 'scale=640:-2',
@@ -189,6 +223,8 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
                 if r['status'] == 'completed':
                     v.pop('erro', None)
                     v.update(arquivo=f'videos/{vid}.mp4', thumb=f'thumbs/{vid}.jpg' if r.get('capa') else None, custo=r.get('custo'), segundos=r['segundos'])
+                    if r.get('largura') and r.get('altura'):   # as do arquivo; sem o ffprobe, ficam as da imagem de origem
+                        v.update(largura=r['largura'], altura=r['altura'])
                 else:
                     v.update(erro=r.get('erro') or r['status'], custo=r.get('custo'))
                 B.gravar_no(slug, v)

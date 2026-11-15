@@ -1,6 +1,10 @@
 # Pesquisa — itens em aberto (2026-11-15)
 
-Quatro itens, cada um com o que foi medido, as fontes, as opções e a recomendação. Nada aqui foi implementado.
+Quatro itens, cada um com o que foi medido, as fontes, as opções e a recomendação.
+
+**Estado (2026-11-15):** os itens 2, 3 e 4 foram aprovados e implementados com a opção recomendada (testes
+`EntradasDeRascunho` e `VideoBaixado`). O item 1 fica como está: repositório privado, com um rascunho de PR para o autor
+guardado fora do git.
 A parte jurídica não é aconselhamento: é leitura das fontes primárias, com os pontos onde um advogado faria diferença.
 
 ---

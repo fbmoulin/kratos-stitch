@@ -640,6 +640,85 @@ class Preco(Isolado):
         self.assertIn('BLOQUEADO', saida.getvalue())
 
 
+@unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'precisa do ffmpeg e do ffprobe')
+class VideoBaixado(Isolado):
+    """O que o gerar_video.py faz com o arquivo que chega: mede as dimensões reais e tira a trilha de áudio."""
+
+    def setUp(self):
+        super().setUp()
+        import subprocess
+        import gerar_video
+        self.gv = gerar_video
+        self.mp4 = self.raiz / 'origem.mp4'   # 320×180, 1 s, com áudio
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:d=1', '-f', 'lavfi', '-i', 'sine=d=1',
+                        '-shortest', '-c:v', 'mpeg4', '-c:a', 'aac', str(self.mp4)], check=True)
+
+    def baixar(self):
+        """gerar_um de verdade, com o OpenRouter trocado: o job termina na 1ª consulta e o conteúdo é o mp4 de teste."""
+        def pedir(metodo, caminho, key, corpo=None, bruto=False, timeout=300):
+            if bruto:
+                return self.mp4.read_bytes()
+            return {'id': 'job'} if metodo == 'POST' else {'status': 'completed', 'usage': {'cost': 0.05}}
+        destino, capa = self.raiz / 'saida.mp4', self.raiz / 'saida.jpg'
+        plano = {'modelo': 'm/x', 'duracao': 1, 'resolucao': '480p', 'estimativa': 0.05, 'audio_controlavel': False}
+        with mock.patch.object(self.gv, 'pedir', pedir), mock.patch.object(self.gv.time, 'sleep', lambda s: None), \
+                contextlib.redirect_stdout(io.StringIO()):
+            return self.gv.gerar_um(plano, 'prompt', 'data:image/png;base64,x', '16:9', 'chave', destino, capa), destino, capa
+
+    def test_mede_o_arquivo_e_tira_o_audio(self):
+        self.assertEqual(self.gv.sondar(self.mp4), {'largura': 320, 'altura': 180, 'audio': True})
+        r, destino, capa = self.baixar()
+        self.assertEqual((r['status'], r['largura'], r['altura']), ('completed', 320, 180))
+        self.assertEqual(self.gv.sondar(destino), {'largura': 320, 'altura': 180, 'audio': False})
+        self.assertTrue(capa.exists())
+        self.assertEqual([f.name for f in self.raiz.glob('*.mp4')].count('saida.mp4'), 1)
+        self.assertFalse(list(self.raiz.glob('*.mudo.mp4')))   # o temporário não fica
+
+    def test_video_sem_audio_nao_e_regravado(self):
+        import subprocess
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(self.mp4), '-an', '-c', 'copy', str(self.raiz / 'mudo.mp4')], check=True)
+        self.mp4 = self.raiz / 'mudo.mp4'
+        with mock.patch.object(self.gv, 'tirar_audio', lambda arq: self.fail('regravou um vídeo que já era mudo')):
+            r, destino, _ = self.baixar()
+        self.assertEqual(destino.read_bytes(), self.mp4.read_bytes())
+        self.assertEqual((r['largura'], r['altura']), (320, 180))
+
+    def test_sem_ffprobe_o_video_fica_como_veio(self):
+        qual = shutil.which
+        with mock.patch.object(self.gv.shutil, 'which', lambda nome: None if nome in ('ffprobe', 'ffmpeg') else qual(nome)):
+            self.assertIsNone(self.gv.sondar(self.mp4))
+            r, destino, capa = self.baixar()
+        self.assertEqual(r['status'], 'completed')
+        self.assertNotIn('largura', r)
+        self.assertEqual(destino.read_bytes(), self.mp4.read_bytes())
+        self.assertFalse(capa.exists())
+
+    def test_ffmpeg_que_falha_nao_estraga_o_arquivo(self):
+        ruim = self.raiz / 'ruim.mp4'
+        ruim.write_bytes(b'isto nao e um mp4')
+        self.assertIsNone(self.gv.sondar(ruim))
+        self.gv.tirar_audio(ruim)
+        self.assertEqual(ruim.read_bytes(), b'isto nao e um mp4')
+        self.assertFalse(list(self.raiz.glob('*.mudo.mp4')))
+
+    def test_o_no_do_video_fica_com_as_dimensoes_do_arquivo(self):
+        slug = B.criar_projeto('Loja')['slug']
+        with B.travado(slug):
+            img = B.novo_no(slug, 'imagem', arquivo='images/x.png')['id']
+            (B.pasta(slug) / 'images' / 'x.png').write_bytes(base64.b64decode(PNG))
+            pid = B.novo_no(slug, 'pedido', tela='LOJ-002', midia='video', entradas=[img], modelos=['m/x'])['id']
+        catalogo = {'m/x': {'id': 'm/x', 'name': 'M: X', 'supported_durations': [4], 'supported_resolutions': ['720p']}}
+
+        def gerar_um(p, prompt, url_img, proporcao, key, destino, capa):
+            return dict(p, status='completed', custo=0.05, segundos=1.0, arquivo=destino.name, largura=736, altura=400)
+        with mock.patch.object(self.gv, 'chave', lambda: 'chave-de-teste'), mock.patch.object(self.gv, 'catalogo_api', lambda key: catalogo), \
+                mock.patch.object(self.gv, 'gerar_um', gerar_um), mock.patch.object(B, 'medidas', lambda arq: (1376, 768)), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            self.gv.por_pedido(pid, 'prompt', confirmado=False)
+        video = B.ler_no(slug, B.ler_no(slug, pid)['saidas'][0])
+        self.assertEqual((video['largura'], video['altura']), (736, 400))   # e não 1376×768, as da imagem de origem
+
+
 class Gerar(Isolado):
     def setUp(self):
         super().setUp()
