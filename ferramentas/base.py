@@ -624,11 +624,17 @@ def medidas(arquivo: Path) -> tuple[int, int] | None:
     return (int(w.group(1)), int(h.group(1))) if w and h else None
 
 
-def para_lixeira(slug: str, id_: str, junto: list[str] | None = None) -> None:
+RASCUNHOS = 'rascunhos.json'   # no lote da lixeira: {rascunho: as entradas que ele tinha antes de o lote sair}
+
+
+def para_lixeira(slug: str, id_: str, junto: list[str] | None = None, rascunhos: dict | None = None) -> None:
     """Nada sai do disco: o nó (e os de `junto`, num lote só) vão para projects/<slug>/lixeira/<id>-<ts>/<pasta>/.
-    restaurar_da_lixeira(id) traz o lote inteiro de volta."""
+    restaurar_da_lixeira(id) traz o lote inteiro de volta. `rascunhos`: as entradas que os rascunhos de fora do lote
+    tinham antes de perder as que saíram; o restaurar as devolve."""
     d = pasta(slug)
     destino = d / 'lixeira' / f'{id_}-{datetime.now():%Y%m%d%H%M%S%f}'
+    if rascunhos:
+        gravar_json(destino / RASCUNHOS, rascunhos)
     for i in [id_, *(junto or [])]:
         for sub in SUBPASTAS:
             for f in (d / sub).glob(f'{i}.*'):
@@ -687,9 +693,21 @@ def restaurar_da_lixeira(slug: str, id_: str) -> dict:
     if not entradas:
         raise KeyError(f'{id_} não está na lixeira')
     origem = entradas[-1]
+    voltou = {f.stem for f in (origem / 'nodes').glob('*.json')}
     for sub in SUBPASTAS:
         for f in (origem / sub).glob('*') if (origem / sub).exists() else []:
             (d / sub).mkdir(parents=True, exist_ok=True)
             shutil.move(str(f), d / sub / f.name)
+    # os rascunhos que perderam entradas quando o lote saiu as recebem de volta, na ordem de antes (a 1ª entrada é o pai);
+    # o que o usuário tirou ou acrescentou no meio fica como ele deixou. Pedido já enviado não é mexido
+    for rid, antes in (ler_json(origem / RASCUNHOS) or {}).items():
+        no = ler_json(caminho_no(slug, rid))
+        if not no or no.get('status') != 'rascunho':
+            continue
+        atuais = no.get('entradas') or []
+        novas = [e for e in antes if e in atuais or e in voltou] + [e for e in atuais if e not in antes]
+        if novas != atuais:
+            no['entradas'] = novas
+            gravar_no(slug, no)
     shutil.rmtree(origem, ignore_errors=True)
     return ler_no(slug, id_)

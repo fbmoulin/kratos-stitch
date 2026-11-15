@@ -313,6 +313,72 @@ class EmLote(Api):
             self.assertEqual(sorted(n['id'] for n in B.nos(self.slug)), antes, ids)
 
 
+class EntradasDeRascunho(Api):
+    """Apagar tira dos rascunhos que ficam as entradas que saíram; restaurar tem de devolvê-las, na ordem."""
+
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Modelos')['slug']
+        self.a = a = arvore_3d(self.slug)
+        self.url = f'/api/projetos/{self.slug}/nos'
+        with B.travado(self.slug):   # sai da imagem; o asset e o modelo 3D entram como referências secundárias
+            self.ref = B.novo_no(self.slug, 'referencia', tela=a['tela'], pos={'x': 0, 'y': 0})['id']
+            self.rasc = B.novo_no(self.slug, 'pedido', tela=a['tela'], entradas=[a['img'], a['ast'], self.ref, a['vid']])['id']
+
+    def entradas(self):
+        return B.ler_no(self.slug, self.rasc)['entradas']
+
+    def apagar(self, *ids):
+        status, _ = self.pedir('POST', f'{self.url}/apagar', {'ids': list(ids)})
+        self.assertEqual(status, 200)
+
+    def restaurar(self, id_):
+        self.assertEqual(self.pedir('POST', f'{self.url}/{id_}/restaurar')[0], 200)
+
+    def test_restaurar_devolve_as_entradas_na_ordem(self):
+        a = self.a
+        self.apagar(a['p_vid'])   # leva o vídeo e, com ele, o pedido de assets e o asset
+        self.assertEqual(self.entradas(), [a['img'], self.ref])
+        self.restaurar(a['p_vid'])
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], self.ref, a['vid']])
+
+    def test_o_que_o_usuario_mudou_no_meio_fica(self):
+        a = self.a
+        self.apagar(a['p_ast'])
+        with B.travado(self.slug):   # tirou a referência e ligou outra imagem enquanto o asset estava na lixeira
+            outra = B.novo_no(self.slug, 'imagem', pedido=a['p_img'])['id']
+            no = B.ler_no(self.slug, self.rasc)
+            no['entradas'] = [a['img'], a['vid'], outra]
+            B.gravar_no(self.slug, no)
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], a['vid'], outra])
+
+    def test_pedido_ja_enviado_nao_e_mexido(self):
+        a = self.a
+        self.apagar(a['p_ast'])
+        neo.alterar(self.slug, self.rasc, status='enviado')
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], self.ref, a['vid']])
+
+    def test_rascunho_apagado_no_meio_nao_quebra_o_restaurar(self):
+        a = self.a
+        self.apagar(a['p_ast'])
+        self.apagar(self.rasc)
+        self.restaurar(a['p_ast'])
+        self.assertTrue(B.caminho_no(self.slug, a['ast']).exists())
+        self.restaurar(self.rasc)
+        self.assertEqual(self.entradas(), [a['img'], self.ref, a['vid']])   # voltou como estava quando foi apagado
+
+    def test_refazer_e_desfazer_de_novo(self):
+        a = self.a
+        for _ in range(2):
+            self.apagar(a['p_ast'])
+            self.assertEqual(self.entradas(), [a['img'], self.ref, a['vid']])
+            self.restaurar(a['p_ast'])
+            self.assertEqual(self.entradas(), [a['img'], a['ast'], self.ref, a['vid']])
+        self.assertEqual(list((B.pasta(self.slug) / 'lixeira').iterdir()), [])
+
+
 class ErrosDoServidor(Api):
     def setUp(self):
         super().setUp()

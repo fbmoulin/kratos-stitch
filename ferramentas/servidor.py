@@ -421,11 +421,13 @@ def apagar(slug: str, ids: list[str]) -> dict:
         sai = {id_, *junto}
         if any(por_id[i]['tipo'] == 'pedido' and por_id[i].get('status') in ('enviado', 'trabalhando') for i in sai):
             raise Erro('Há um pedido em andamento neste galho: espere o Claude terminar.')
-        for n in todos:  # rascunhos que ficam tiram as entradas que saíram
+        rascunhos = {}   # rascunhos que ficam tiram as entradas que saíram; o lote guarda como eram, para o restaurar
+        for n in todos:
             if n['id'] not in sai and n.get('status') == 'rascunho' and sai & set(n.get('entradas') or []):
+                rascunhos[n['id']] = n['entradas']
                 n['entradas'] = [e for e in n['entradas'] if e not in sai]
                 B.gravar_no(slug, n)
-        B.para_lixeira(slug, id_, junto)
+        B.para_lixeira(slug, id_, junto, rascunhos)
     return {'ok': True, 'apagados': [id_, *junto]}
 
 
