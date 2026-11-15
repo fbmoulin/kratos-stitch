@@ -459,6 +459,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
     return () => clearTimeout(t)
   }, [aviso])
 
+  const cobertoRef = useRef(false)  // o `coberto` (mais abaixo) para o handler de colar
   // colar (⌘V) ou soltar imagens no canvas → referências
   const subir = useCallback(
     async (arquivos: File[], onde?: { x: number; y: number }) => {
@@ -475,6 +476,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   useEffect(() => {
     const colar = (e: ClipboardEvent) => {
       if (e.target instanceof Element && e.target.closest('textarea, input')) return
+      if (cobertoRef.current) return  // com o Viewer ou um modal aberto, colar não cria referência no canvas por trás
       const arquivos = [...(e.clipboardData?.files || [])]
       if (arquivos.length) { e.preventDefault(); subir(arquivos) }
     }
@@ -544,6 +546,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
 
   // com o Viewer ou um modal aberto, os atalhos do canvas não valem (o Viewer tem os dele)
   const coberto = (!!visto && porId.has(visto)) || !!confirmar || spec || config
+  useEffect(() => { cobertoRef.current = coberto }, [coberto])
   // ⌘Z desfaz, ⌘⇧Z (ou ⌘Y) refaz — fora dos campos de texto, que têm o próprio desfazer
   useEffect(() => {
     const tecla = async (e: KeyboardEvent) => {

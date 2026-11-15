@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import tempfile
 import unicodedata
@@ -36,7 +37,7 @@ MODELOS = {
     'openai/gpt-image-2.5-sunburst': {'nome': 'GPT Image 2.5 Sunburst', 'preco': 0.14},
     'openai/gpt-image-2.5-flare': {'nome': 'GPT Image 2.5 Flare', 'preco': 0.14},
     'google/gemini-3-pro-image': {'nome': 'Nano Banana Pro', 'preco': 0.14},
-    'google/gemini-3.1-flash-image': {'nome': 'Nano Banana Flash', 'preco': 0.04},
+    'google/gemini-3.1-flash-image': {'nome': 'Nano Banana Flash', 'preco': 0.07},
     'bytedance-seed/seedream-5-0-pro': {'nome': 'Seedream 5 Pro', 'preco': 0.05},
     'black-forest-labs/flux.2-pro': {'nome': 'Flux 2 Pro', 'preco': 0.05},
 }
@@ -304,6 +305,63 @@ def devolver_pedido(slug: str, pid: str, motivo: str) -> None:
             gravar_no(slug, pedido)
 
 
+# ---------- o gerador de um pedido (gerar.py / gerar_video.py) ----------
+# Enquanto gera, o script deixa no pedido `gerador: {pid, desde, saidas}` (as saídas desta execução). Se o processo morre
+# sem fechar o pedido (SIGKILL, a máquina caiu), o pedido não fica preso: quem passar depois vê que o PID morreu e o fecha.
+
+def gerador_vivo(pedido: dict) -> bool:
+    pid = (pedido.get('gerador') or {}).get('pid')
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:   # existe, de outro usuário
+        return True
+    return True
+
+
+def fechar_pedido(slug: str, pid: str, saidas: list[str], vazio: str) -> tuple[int, float]:
+    """Chame com a trava do projeto. Fecha o pedido pelo que as saídas desta execução deixaram no disco: o que ainda
+    estava "gerando" vira erro; `concluido` se alguma saiu, senão `erro` com a mensagem `vazio`. Devolve (prontas, custo)."""
+    prontas, custo = 0, 0.0
+    for i in saidas:
+        no = ler_json(caminho_no(slug, i))
+        if not no:   # o usuário apagou o placeholder no meio
+            continue
+        if no.pop('gerando', None):
+            no['erro'] = 'A geração foi interrompida.'
+            gravar_no(slug, no)
+        prontas += bool(no.get('arquivo'))
+        custo += no.get('custo') or 0
+    pedido = ler_no(slug, pid)
+    pedido.pop('gerador', None)
+    pedido['custo'] = round((pedido.get('custo') or 0) + custo, 4)
+    pedido['status'] = 'concluido' if prontas else 'erro'
+    if not prontas:
+        pedido['erro'] = vazio
+    pedido['concluido_em'] = agora()
+    gravar_no(slug, pedido)
+    return prontas, custo
+
+
+def _soltar_orfaos(slug: str) -> list[str]:
+    """Chame com a trava do projeto. Fecha os pedidos "trabalhando" cujo gerador morreu; devolve os códigos deles.
+    Um pedido sem `gerador` (o Claude ainda escreve os prompts) não é tocado."""
+    soltos = []
+    for no in nos(slug):
+        if no.get('tipo') == 'pedido' and no.get('status') == 'trabalhando' and no.get('gerador') and not gerador_vivo(no):
+            fechar_pedido(slug, no['id'], no['gerador'].get('saidas') or [], 'A geração foi interrompida.')
+            soltos.append(no['id'])
+    return soltos
+
+
+def soltar_orfaos(slug: str) -> list[str]:
+    with travado(slug):
+        return _soltar_orfaos(slug)
+
+
 def comentar(slug: str, id_: str, autor: str, texto: str, pin: dict | None = None) -> dict:
     """Chame com a trava do projeto. `pin` = {x, y} de 0 a 1 sobre a imagem (+ t, o segundo, num vídeo)."""
     no = ler_no(slug, id_)
@@ -363,6 +421,17 @@ def custos(slug: str, lista: list[dict] | None = None) -> dict:
             if (no.get('criado') or '').startswith(hoje) and not no.get('legado'):
                 dia += no['custo']
     return {'total': round(total, 4), 'hoje': round(dia, 4)}
+
+
+def preco_estimado(slug: str, modelo: str, resolucao: str) -> float:
+    """US$ por imagem, para o teto de custo. O OpenRouter cobra por token de saída, então o preço da tabela é só uma
+    aproximação: com 3 ou mais imagens do mesmo modelo e resolução no projeto, vale a mediana do que elas custaram, quando
+    for maior que a tabela (o histórico só sobe a estimativa: qualidade e referências mudam o custo e não ficam no nó)."""
+    tabela = MODELOS.get(modelo, {}).get('preco', 0.15)
+    pagos = [n['custo'] for n in nos(slug)
+             if n.get('tipo') == 'imagem' and n.get('modelo') == modelo and n.get('resolucao') == resolucao and (n.get('custo') or 0) > 0
+             and not (n.get('asset') or n.get('erro') or n.get('legado'))]
+    return max(tabela, statistics.median(pagos)) if len(pagos) >= 3 else tabela
 
 
 # ---------- avanços ("fogo": a imagem virou algo maior — vídeo, tentativas de HTML) ----------

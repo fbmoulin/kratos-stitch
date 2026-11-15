@@ -329,6 +329,162 @@ class Video(Isolado):
         self.assertEqual(B.ler_no(slug, pid)['status'], 'erro')   # fechou (o vídeo de teste "falhou"), não ficou preso
 
 
+def pid_morto() -> int:
+    """O PID de um processo que já terminou (e foi recolhido)."""
+    import subprocess
+    p = subprocess.Popen([sys.executable, '-c', 'pass'])
+    p.wait()
+    return p.pid
+
+
+class Orfaos(Isolado):
+    """Um gerador que morreu (SIGKILL, queda da máquina) não deixa o pedido preso."""
+
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Loja')['slug']
+
+    def pedido(self, pid, pronta=False, com_gerador=True):
+        with B.travado(self.slug):
+            ped = B.novo_no(self.slug, 'pedido', tela='LOJ-002', status='trabalhando', custo=1.0)
+            antiga = B.novo_no(self.slug, 'imagem', pedido=ped['id'], arquivo='images/a.png', custo=0.5)   # de outra execução
+            a = B.novo_no(self.slug, 'imagem', pedido=ped['id'], gerando=True)
+            b = B.novo_no(self.slug, 'imagem', pedido=ped['id'], **({'arquivo': 'images/b.png', 'custo': 0.2} if pronta else {'gerando': True}))
+            ped['saidas'] = [antiga['id'], a['id'], b['id']]
+            if com_gerador:
+                ped['gerador'] = {'pid': pid, 'desde': B.agora(), 'saidas': [a['id'], b['id']]}
+            B.gravar_no(self.slug, ped)
+        return ped['id'], a['id'], b['id']
+
+    def test_gerador_morto_sem_nada_pronto_vira_erro(self):
+        pid, a, b = self.pedido(pid_morto())
+        self.assertEqual(B.soltar_orfaos(self.slug), [pid])
+        ped = B.ler_no(self.slug, pid)
+        self.assertEqual((ped['status'], ped['custo'], 'gerador' in ped), ('erro', 1.0, False))
+        for i in (a, b):
+            no = B.ler_no(self.slug, i)
+            self.assertNotIn('gerando', no)
+            self.assertTrue(no['erro'])
+
+    def test_gerador_morto_com_imagem_pronta_conclui_e_soma_so_esta_execucao(self):
+        pid, a, b = self.pedido(pid_morto(), pronta=True)
+        B.soltar_orfaos(self.slug)
+        ped = B.ler_no(self.slug, pid)
+        self.assertEqual((ped['status'], ped['custo']), ('concluido', 1.2))   # 1.0 + 0.2; a imagem antiga (0.5) não conta de novo
+        self.assertTrue(B.ler_no(self.slug, a)['erro'])
+        self.assertNotIn('erro', B.ler_no(self.slug, b))
+
+    def test_gerador_vivo_ou_pedido_sem_gerador_nao_mudam(self):
+        import os
+        vivo, a, _ = self.pedido(os.getpid())
+        sem, c, _ = self.pedido(0, com_gerador=False)
+        self.assertEqual(B.soltar_orfaos(self.slug), [])
+        for pid, i in ((vivo, a), (sem, c)):
+            self.assertEqual(B.ler_no(self.slug, pid)['status'], 'trabalhando')
+            self.assertTrue(B.ler_no(self.slug, i)['gerando'])
+
+    def test_pedido_solto_e_pego_de_novo_nao_e_tocado(self):
+        pid, _, _ = self.pedido(pid_morto())
+        for cmd in (['erro', pid, 'travou'], ['pegar', pid]):
+            with mock.patch.object(sys, 'argv', ['neo.py', *cmd]), contextlib.redirect_stdout(io.StringIO()):
+                neo.main()
+        self.assertNotIn('gerador', B.ler_no(self.slug, pid))
+        self.assertEqual(B.soltar_orfaos(self.slug), [])
+        self.assertEqual(B.ler_no(self.slug, pid)['status'], 'trabalhando')
+
+    def test_gerar_roda_num_pedido_cujo_gerador_morreu(self):
+        pid, a, b = self.pedido(pid_morto())
+        saida = io.StringIO()
+        with mock.patch.object(gerar, 'chave', lambda: 'chave-de-teste'), \
+                mock.patch.object(gerar, 'pedir', lambda *a, **k: {'data': [{'b64_json': PNG}], 'usage': {'cost': 0.14}}), \
+                mock.patch.object(sys, 'argv', ['gerar.py', pid, '--prompt', 'x']), \
+                contextlib.redirect_stdout(saida), self.assertRaises(SystemExit) as fim:
+            gerar.main()
+        self.assertEqual(fim.exception.code, 0, saida.getvalue())
+        ped = B.ler_no(self.slug, pid)
+        self.assertEqual((ped['status'], len(ped['saidas']), 'gerador' in ped), ('concluido', 4, False))
+
+    def test_sigterm_fecha_o_pedido_e_o_processo_morre_logo(self):
+        import signal
+        import subprocess
+        import time
+        with B.travado(self.slug):
+            pid = B.novo_no(self.slug, 'pedido', tela='LOJ-002', status='trabalhando')['id']
+        codigo = f"""
+import sys, time
+sys.path.insert(0, {str(Path(gerar.__file__).parent)!r})
+from pathlib import Path
+import base as B, gerar
+B.RAIZ = Path({str(self.raiz)!r}); B.PROJETOS = B.RAIZ / 'projects'; B.FILA = B.RAIZ / 'fila.jsonl'
+gerar.chave = lambda: 'chave-de-teste'
+gerar.pedir = lambda *a, **k: time.sleep(60)
+sys.argv = ['gerar.py', {pid!r}, '--prompt', 'a', '--prompt', 'b']
+gerar.main()
+"""
+        p = subprocess.Popen([sys.executable, '-c', codigo], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(p.kill)
+        fim = time.time() + 10
+        while time.time() < fim and 'gerador' not in B.ler_no(self.slug, pid):   # espera os placeholders
+            time.sleep(0.05)
+        self.assertIn('gerador', B.ler_no(self.slug, pid))
+        t0 = time.time()
+        p.send_signal(signal.SIGTERM)
+        self.assertEqual(p.wait(timeout=3), 143)
+        self.assertLess(time.time() - t0, 3)
+        ped = B.ler_no(self.slug, pid)
+        self.assertEqual((ped['status'], 'gerador' in ped), ('erro', False))
+        self.assertFalse([n['id'] for n in B.nos(self.slug) if n.get('gerando')])
+
+
+class Preco(Isolado):
+    """A estimativa que decide o teto de custo: a tabela, ou o histórico do projeto quando ele é mais caro."""
+    FLASH = 'google/gemini-3.1-flash-image'
+
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Loja')['slug']
+
+    def imagens(self, custos, **campos):
+        with B.travado(self.slug):
+            for c in custos:
+                B.novo_no(self.slug, 'imagem', **{'modelo': self.FLASH, 'resolucao': '1K', 'arquivo': 'images/x.png', 'custo': c, **campos})
+
+    def test_sem_historico_vale_a_tabela(self):
+        self.assertEqual(B.preco_estimado(self.slug, self.FLASH, '1K'), B.MODELOS[self.FLASH]['preco'])
+        self.assertEqual(B.preco_estimado(self.slug, 'modelo/desconhecido', '1K'), 0.15)
+        self.imagens([0.5, 0.5])   # duas amostras ainda não bastam
+        self.assertEqual(B.preco_estimado(self.slug, self.FLASH, '1K'), B.MODELOS[self.FLASH]['preco'])
+
+    def test_historico_mais_caro_sobe_a_estimativa(self):
+        self.imagens([0.20, 0.22, 0.90])
+        self.assertEqual(B.preco_estimado(self.slug, self.FLASH, '1K'), 0.22)
+
+    def test_historico_mais_barato_nao_baixa_a_estimativa(self):
+        self.imagens([0.01, 0.01, 0.01])
+        self.assertEqual(B.preco_estimado(self.slug, self.FLASH, '1K'), B.MODELOS[self.FLASH]['preco'])
+
+    def test_o_que_nao_entra_na_mediana(self):
+        self.imagens([0.9] * 3, modelo='openai/gpt-image-2')
+        self.imagens([0.9] * 3, resolucao='4K')
+        self.imagens([0.9] * 3, erro='falhou')
+        self.imagens([0.9] * 3, asset=True)
+        self.imagens([0.9] * 3, legado=True)
+        self.imagens([None, 0, 0.9])
+        self.assertEqual(B.preco_estimado(self.slug, self.FLASH, '1K'), B.MODELOS[self.FLASH]['preco'])
+
+    def test_o_teto_diario_usa_o_historico(self):
+        self.imagens([6.0, 6.0, 6.0], criado='2020-01-01T00:00:00')   # caras, mas de outro dia: hoje = $0
+        with B.travado(self.slug):
+            pid = B.novo_no(self.slug, 'pedido', tela='LOJ-002', modelo=self.FLASH, resolucao='1K')['id']
+        saida = io.StringIO()
+        with mock.patch.object(gerar, 'chave', lambda: 'chave-de-teste'), mock.patch.object(gerar, 'pedir', lambda *a, **k: self.fail('gerou')), \
+                mock.patch.object(sys, 'argv', ['gerar.py', pid, '--prompt', 'a', '--prompt', 'b', '--prompt', 'c', '--prompt', 'd']), \
+                contextlib.redirect_stdout(saida), self.assertRaises(SystemExit) as fim:
+            gerar.main()
+        self.assertEqual(fim.exception.code, 3, saida.getvalue())   # 4 × $6 passa do teto diário de $20; pela tabela seriam $0,28
+        self.assertIn('BLOQUEADO', saida.getvalue())
+
+
 class Gerar(Isolado):
     def setUp(self):
         super().setUp()

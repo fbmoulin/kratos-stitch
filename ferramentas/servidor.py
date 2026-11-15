@@ -419,6 +419,7 @@ def enviar(h, m, corpo):
         no['status'] = 'enviado'
         no['enviado_em'] = B.agora()
         no.pop('erro', None)
+        no.pop('gerador', None)
         B.gravar_no(slug, no)
     B.enfileirar(slug, id_, acao)
     return no
@@ -666,6 +667,7 @@ def varredor() -> None:
         for slug in B.projetos():
             try:
                 pedir_fotos(slug, B.avancos(slug))
+                B.soltar_orfaos(slug)   # o gerador de um pedido morreu sem fechá-lo: o pedido não fica preso
             except (OSError, ValueError, KeyError):
                 pass
         time.sleep(60)

@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -149,6 +152,7 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     largura, altura = B.medidas(img) or (1280, 720)
     nossos = B.modelos_video(todos=True)  # os nomes curtos ("Hailuo 3"); o catálogo da API traz "MiniMax: H3"
     with B.travado(slug):
+        B._soltar_orfaos(slug)   # um gerador que morreu não segura o pedido
         pedido = B.ler_no(slug, pid)
         if any((B.ler_json(B.caminho_no(slug, i)) or {}).get('gerando') for i in pedido.get('saidas') or []):
             sys.exit(f'ERRO: {pid} já tem vídeos sendo gerados (outra execução do gerar_video.py). Se ela morreu, solte o '
@@ -159,9 +163,21 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
             v = B.novo_no(slug, 'video', pedido=pid, modelo=p['modelo'], nome=nome, prompt=prompt, duracao=p['duracao'], resolucao=p['resolucao'], largura=largura, altura=altura, gerando=True)
             ids.append(v['id'])
         pedido.update(status='trabalhando', saidas=pedido.get('saidas', []) + ids, variacoes=[{'nome': 'vídeo', 'prompt': prompt}],
-                      iniciado_em=B.agora())
+                      iniciado_em=B.agora(), gerador={'pid': os.getpid(), 'desde': B.agora(), 'saidas': ids})
         pedido.pop('erro', None)
         B.gravar_no(slug, pedido)
+
+    vazio = 'Nenhum vídeo foi gerado (veja o erro em cada nó).'
+    fechando = threading.Event()
+
+    def ao_terminar(*_):
+        # SIGTERM: fecha o pedido já e sai, sem esperar os vídeos em voo (o `finally` esperaria os workers por minutos)
+        if fechando.is_set():
+            return
+        with B.travado(slug):
+            B.fechar_pedido(slug, pid, ids, vazio)
+        os._exit(143)
+    anterior = signal.signal(signal.SIGTERM, ao_terminar)
 
     def um(par):
         vid, p = par
@@ -183,22 +199,10 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
         with ThreadPoolExecutor(max_workers=8) as ex:
             list(ex.map(um, zip(ids, planos)))
     finally:   # também quando a geração é interrompida: o pedido fecha pelo que ficou no disco e nada segue "gerando"
+        fechando.set()
         with B.travado(slug):
-            ok, custo = 0, 0.0
-            for vid in ids:
-                v = B.ler_json(B.caminho_no(slug, vid))
-                if not v:
-                    continue
-                if v.pop('gerando', None):
-                    v['erro'] = 'A geração foi interrompida.'
-                    B.gravar_no(slug, v)
-                ok += bool(v.get('arquivo'))
-                custo += v.get('custo') or 0
-            pedido = B.ler_no(slug, pid)
-            pedido.update(status='concluido' if ok else 'erro', custo=round((pedido.get('custo') or 0) + custo, 4), concluido_em=B.agora())
-            if not ok:
-                pedido['erro'] = 'Nenhum vídeo foi gerado (veja o erro em cada nó).'
-            B.gravar_no(slug, pedido)
+            ok, custo = B.fechar_pedido(slug, pid, ids, vazio)
+        signal.signal(signal.SIGTERM, anterior)
     print(f'{pid}: {ok}/{len(ids)} vídeos · ${custo:.2f} · {", ".join(ids)}')
     sys.exit(0 if ok else 1)
 

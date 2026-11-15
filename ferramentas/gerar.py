@@ -23,7 +23,10 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
+import signal
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -65,7 +68,7 @@ def main() -> None:
     mod = B.modelo(a.modelo or pedido.get('modelo'))
     aspecto = a.aspecto or pedido.get('aspecto') or projeto['padroes']['aspecto']
     resolucao = a.resolucao or pedido.get('resolucao') or projeto['padroes']['resolucao']
-    preco = B.MODELOS.get(mod, {}).get('preco', 0.15)
+    preco = B.preco_estimado(slug, mod, resolucao)
     tetos = projeto.get('tetos', B.TETOS)
     estimativa = preco * len(variacoes)
     hoje = B.custos(slug)['hoje']
@@ -100,6 +103,7 @@ def main() -> None:
 
     # 1. variações no pedido + placeholders
     with B.travado(slug):
+        B._soltar_orfaos(slug)   # um gerador que morreu não segura o pedido
         pedido = B.ler_no(slug, pid)
         if any((B.ler_json(B.caminho_no(slug, i)) or {}).get('gerando') for i in pedido.get('saidas') or []):
             sys.exit(f'ERRO: {pid} já tem imagens sendo geradas (outra execução do gerar.py). Se ela morreu, solte o pedido '
@@ -111,9 +115,21 @@ def main() -> None:
             imagens.append(img['id'])
         pedido.update({'status': 'trabalhando', 'variacoes': variacoes, 'modelo': mod, 'aspecto': aspecto,
                        'resolucao': resolucao, 'saidas': pedido.get('saidas', []) + imagens,
-                       'iniciado_em': B.agora()})
+                       'iniciado_em': B.agora(), 'gerador': {'pid': os.getpid(), 'desde': B.agora(), 'saidas': imagens}})
         pedido.pop('erro', None)
         B.gravar_no(slug, pedido)
+
+    vazio = 'Nenhuma imagem foi gerada (veja o erro nas imagens).'
+    fechando = threading.Event()
+
+    def ao_terminar(*_):
+        # SIGTERM: fecha o pedido já e sai, sem esperar as imagens em voo (o `finally` esperaria os workers até o timeout)
+        if fechando.is_set():
+            return
+        with B.travado(slug):
+            B.fechar_pedido(slug, pid, imagens, vazio)
+        os._exit(143)
+    anterior = signal.signal(signal.SIGTERM, ao_terminar)
 
     def uma(par):
         iid, v = par
@@ -152,24 +168,10 @@ def main() -> None:
         with ThreadPoolExecutor(max_workers=min(6, len(variacoes))) as ex:
             list(ex.map(uma, zip(imagens, variacoes)))
     finally:   # também quando a geração é interrompida: o pedido fecha pelo que ficou no disco e nada segue "gerando"
+        fechando.set()
         with B.travado(slug):
-            prontas, custo = 0, 0.0
-            for i in imagens:
-                img = B.ler_json(B.caminho_no(slug, i))
-                if not img:
-                    continue
-                if img.pop('gerando', None):
-                    img['erro'] = 'A geração foi interrompida.'
-                    B.gravar_no(slug, img)
-                prontas += bool(img.get('arquivo'))
-                custo += img.get('custo') or 0
-            pedido = B.ler_no(slug, pid)
-            pedido['custo'] = round((pedido.get('custo') or 0) + custo, 4)
-            pedido['status'] = 'concluido' if prontas else 'erro'
-            if not prontas:
-                pedido['erro'] = 'Nenhuma imagem foi gerada (veja o erro nas imagens).'
-            pedido['concluido_em'] = B.agora()
-            B.gravar_no(slug, pedido)
+            prontas, custo = B.fechar_pedido(slug, pid, imagens, vazio)
+        signal.signal(signal.SIGTERM, anterior)
     print(f'{pid}: {prontas}/{len(imagens)} imagens · ${custo:.3f} · {", ".join(imagens)}')
     sys.exit(0 if prontas else 1)
 
