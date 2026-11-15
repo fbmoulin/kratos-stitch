@@ -78,9 +78,10 @@ uv run ferramentas/gerar_video.py JAR-0XX --prompt-arquivo prompt.txt
 `gerar.py` e `gerar_video.py` gravam o custo sozinhos. Como escrever bons prompts: skill `neo-stitch`
 (`.claude/skills/neo-stitch/SKILL.md`).
 
-Os dois recusam rodar num pedido que já tem saídas sendo geradas (outra execução em andamento). Se a outra morreu e o
-pedido ficou preso, solte-o com `uv run ferramentas/neo.py erro <PEDIDO> "motivo"` e rode de novo. Sem a chave, eles
-devolvem o pedido como erro e não criam nada.
+Os dois recusam rodar num pedido que tem outra execução viva. Se a outra morreu, não precisa fazer nada: rode de novo
+(o gerador morto é detectado pelo PID e o pedido é fechado antes). Um pedido que você pegou com `neo.py pegar` e não vai
+atender se devolve com `uv run ferramentas/neo.py erro <PEDIDO> "motivo"`. Sem a chave, eles devolvem o pedido como
+erro e não criam nada.
 
 ## 5. Páginas: um vídeo vira HTML vivo
 

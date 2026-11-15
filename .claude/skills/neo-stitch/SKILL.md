@@ -40,7 +40,7 @@ Cada evento é uma linha `{"projeto", "id", "acao"}`. Antes de qualquer coisa, r
    `uv run ferramentas/gerar.py <id> --json '[{"nome": "…", "prompt": "…"}, …]'`
    - **Saída 3** = bateu num teto de custo (mais de 6 imagens no pedido ou acima do teto diário). Pergunte ao usuário no chat e rode de novo com `--confirmado` só depois do sim.
    - **Falha da API** → as imagens ficam com `erro` e o pedido também. Tente uma vez de novo; persistindo, devolva com `neo.py erro <id> "motivo"`.
-   - **"já tem imagens sendo geradas"** → outra execução do gerador está viva nesse pedido: espere. Se ela morreu, `neo.py erro <id> "motivo"` solta o pedido e os placeholders; aí rode de novo. O `gerar_video.py` faz o mesmo.
+   - **"já tem imagens sendo geradas"** → outra execução do gerador está viva nesse pedido: espere. Uma execução que morreu não bloqueia (é detectada pelo PID e o pedido é fechado sozinho). O `gerar_video.py` faz o mesmo.
 4. Não narre cada passo no chat. Uma linha basta ("JAR-120: 3 variações penduradas, $0.41").
 
 ### acao = "video" (nó Pedido com `midia: "video"`)

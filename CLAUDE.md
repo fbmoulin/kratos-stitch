@@ -32,3 +32,7 @@ Canvas local para explorar interfaces: imagem → vídeo → HTML vivo. **Antes 
   pode escapar disso.
 - Um tipo de nó novo entra em todos os lugares que listam tipos: `TIPOS_NO`, `custos()` e `galho()` (`base.py`),
   `CAMPOS_APP` (`servidor.py`) e `arvore()` (`app/src/layout.ts`). O `galho()` tem de seguir a `arvore()`.
+- Quem gera (`gerar.py`, `gerar_video.py`) deixa `gerador: {pid, desde, saidas}` no pedido e o fecha com
+  `base.fechar_pedido`; um gerador novo segue o mesmo contrato, senão um pedido morto fica preso.
+- No app, mudar ou apagar vários nós é um `mudarVarios` / `apagarVarios` (um pedido ao servidor, um passo de desfazer),
+  não um laço de `mudar`.

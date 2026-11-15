@@ -180,7 +180,9 @@ Os mesmos comandos funcionam pelo chat: "gera 3 variações da JAR-042 mais neon
 
 As skills `img2html` e `video2html`, que fazem o HTML, são skills globais do autor e não vêm neste repositório. Sem elas, qualquer agente segue o [docs/AGENTES.md](docs/AGENTES.md).
 
-Se um pedido ficar preso em "trabalhando" (a geração foi morta no meio), solte-o com `uv run ferramentas/neo.py erro <PEDIDO> "motivo"`: ele volta como erro e pode ser reenviado. O `gerar.py` e o `gerar_video.py` recusam rodar num pedido que já tem saídas sendo geradas, para não pagar duas vezes.
+Se a geração for morta no meio (o terminal fechou, a máquina caiu), o pedido não fica preso: com o servidor ligado, em até um minuto ele fecha sozinho como erro (ou concluído, se alguma imagem já tinha saído) e pode ser reenviado. O `gerar.py` e o `gerar_video.py` recusam rodar num pedido que tem outra execução viva, para não pagar duas vezes. Um pedido que o Claude pegou e nunca chegou a gerar se solta com `uv run ferramentas/neo.py erro <PEDIDO> "motivo"`.
+
+O teto de custo usa o preço da tabela ou, quando o projeto já tem 3 ou mais imagens daquele modelo e resolução, a mediana do que elas custaram, se for maior.
 
 ## Só local
 
@@ -192,7 +194,7 @@ O servidor escuta em `127.0.0.1` e recusa qualquer pedido cujo `Host` ou `Origin
 python3 -m unittest discover -s tests     # ou: uvx pytest tests
 ```
 
-Só biblioteca padrão. Rodam num `projects/` temporário e com o cliente do OpenRouter trocado: não tocam nos seus projetos nem gastam nada.
+Só biblioteca padrão. Rodam num `projects/` temporário e com o cliente do OpenRouter trocado: não tocam nos seus projetos nem gastam nada. O CI (`.github/workflows/ci.yml`) roda os testes, o build e o lint do app a cada push.
 
 ## Estrutura
 

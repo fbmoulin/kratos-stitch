@@ -196,3 +196,39 @@ Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 4) em /Users/fe
 - Estimativa ($0,05) igual à cobrança ($0,050). Gasto total da sessão em APIs: US$ 0,117.
 - Observações (não corrigidas): o nó guarda `largura`/`altura` da imagem de origem (1376×768), não do vídeo (736×400); o arquivo veio com trilha de áudio.
 - Plano restante: itens 1 a 5 da Atualização 4.
+
+---
+
+# Atualização 6 (2026-11-15) — spec, pre-mortem e a fase 2 de robustez
+
+## Estado medido
+
+- Spec: `docs/specs/2026-11-15-robustez-fase-2.md` (com a revisão pós pre-mortem e a tabela de resultado). Pre-mortem: `.premortems/PREMORTEM-2026-11-15T01-30-00.md`, veredito REFINE (2 `high` locais, 3 `medium`), todos incorporados antes de implementar.
+- Os cinco itens estão implementados e enviados para `kratos/correcoes-auditoria`: CI (`0744be2`), pedido preso que se cura + estimativa de custo + colar (`9d745fc`), mudar e apagar em lote (`cd44af7`).
+- `python3 -m unittest discover -s tests` → 46 testes, OK (com e sem o `sips`). `ruff check ferramentas` → 21 (linha de base). `oxlint` → 9 (linha de base). Build ok.
+- CI: workflow `CI` em `ubuntu-latest`; o status de cada push está em `gh run list -R fbmoulin/kratos-stitch`.
+- Nenhuma geração paga nesta etapa. Gasto da sessão em APIs: US$ 0,117.
+
+## Verificado no navegador (cópia isolada)
+
+- Colar com o visualizador aberto: 0 referências criadas; fechado: 1.
+- ⌘1 com 6 galhos: 1 `PATCH /nos` + 1 recarga; ⌘Z e ⌘⇧Z idem.
+- Realinhar com um cartão de página movido: zera nós e página; ⌘Z devolve os dois.
+- Apagar + ⌘Z pela rota nova: só com um nó (o ⌘+clique por script não soma à seleção).
+
+## Não verificado
+
+- Apagar vários nós pelo app (coberto só no servidor).
+- `gerar_video.py` com SIGTERM; o varredor chamando `soltar_orfaos` a cada 60 s.
+
+## Itens abertos
+
+- Rascunhos perdem as `entradas` apagadas e o desfazer não as devolve (bug anterior, registrado no pre-mortem).
+- O cartão do vídeo guarda as dimensões da imagem de origem; o vídeo vem com trilha de áudio.
+- Licença do repositório de origem (decisão do usuário).
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 6) e docs/specs/2026-11-15-robustez-fase-2.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -5, python3 -m unittest discover -s tests, gh run list -R fbmoulin/kratos-stitch --limit 3, curl localhost:8730/api/projetos). Branch correcoes-auditoria, remote kratos; nunca enviar para origin; geração real só com o meu ok. Próximos: testar no app apagar vários nós com ⌘Z; devolver as entradas dos rascunhos ao restaurar.
+```
