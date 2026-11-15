@@ -185,3 +185,14 @@ Decisão do usuário: o repo de origem não tem licença.
 ```
 Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 4) em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -3, python3 -m unittest discover -s tests, git ls-remote kratos). Branch correcoes-auditoria, remote kratos; nunca enviar para origin. Implemente o plano na ordem 1, 2, 3, com teste antes de cada um; geração real só com o meu ok.
 ```
+
+---
+
+# Atualização 5 (2026-11-15) — teste real de vídeo (item 6 do plano, autorizado)
+
+- Pedido de vídeo TES-005 criado e enviado pela API do servidor real, saindo da imagem TES-004; modelo `x-ai/grok-imagine-video-1.5-lite`, 2 s, 480p; `neo.py pegar` e `gerar_video.py`.
+- Saída: `estimativa $0.05` · `completed $0.050 30.8s` · `TES-005: 1/1 vídeos · $0.05 · TES-006`, exit 0.
+- Conferido: pedido `concluido`; nó de vídeo com arquivo, capa, custo; `avancos` liga TES-004 → TES-006; `/projects/teste-e2e/videos/TES-006.mp4` → 200 `video/mp4` 348 kB; `Range: bytes=0-99` → 206 `bytes 0-99/347708`; ffprobe: h264 736×400, 2,04 s. Quadros 0 e 40: layout e textos intactos, o segundo checkbox marcado como pedido.
+- Estimativa ($0,05) igual à cobrança ($0,050). Gasto total da sessão em APIs: US$ 0,117.
+- Observações (não corrigidas): o nó guarda `largura`/`altura` da imagem de origem (1376×768), não do vídeo (736×400); o arquivo veio com trilha de áudio.
+- Plano restante: itens 1 a 5 da Atualização 4.
