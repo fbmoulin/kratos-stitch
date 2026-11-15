@@ -303,8 +303,8 @@ def criar_no(h, m, corpo):
             brief = next((n for n in existentes.values() if n['tipo'] == 'brief'), None)
             extra = {'titulo': (corpo.get('titulo') or 'Nova tela').strip(), 'pai': brief and brief['id']}
         else:
-            entradas = [e for e in corpo.get('entradas') or [] if e in existentes and existentes[e]['tipo'] in ('imagem', 'referencia')]
-            tela = next(filter(None, (tela_de(existentes, e) for e in entradas)), None)
+            entradas = entradas_validas(slug, existentes, corpo.get('entradas'))
+            tela = next(filter(None, (tela_de(existentes, e.split('/')[0]) for e in entradas)), None)
             if not tela and existentes.get(corpo.get('tela'), {}).get('tipo') == 'tela':
                 tela = corpo['tela']
             if not tela:
@@ -312,6 +312,18 @@ def criar_no(h, m, corpo):
             extra = {'tela': tela, 'entradas': entradas}
         campos = limpar_campos(tipo, {k: v for k, v in corpo.items() if k not in ('tipo', 'entradas', 'tela')})
         return B.novo_no(slug, tipo, **extra, **campos)
+
+
+def entradas_validas(slug: str, existentes: dict, entradas) -> list[str]:
+    """O que pode entrar num pedido pelo app: imagens, referências e páginas com print (<IMG>/<vN>), sem repetir."""
+    out: list[str] = []
+    for e in entradas or []:
+        if not isinstance(e, str) or e in out:
+            continue
+        if existentes.get(e, {}).get('tipo') in ('imagem', 'referencia') or (
+                re.fullmatch(ID + r'/v\d+(?:\.\d+)?', e) and e.split('/')[0] in existentes and B.arquivo_entrada(slug, e)):
+            out.append(e)
+    return out
 
 
 def tela_de(existentes: dict, id_: str | None, fundo: int = 0) -> str | None:
@@ -336,6 +348,8 @@ def mudar_no(h, m, corpo):
         campos = limpar_campos(no['tipo'], corpo)
         if no['tipo'] == 'pedido' and no.get('status') != 'rascunho' and SO_RASCUNHO & campos.keys():
             raise Erro('Este pedido já foi enviado; crie um novo a partir dele.')
+        if 'entradas' in campos:
+            campos['entradas'] = entradas_validas(slug, {n['id']: n for n in B.nos(slug)}, campos['entradas'])
         no.update(campos)
         return B.gravar_no(slug, no)
 
@@ -502,6 +516,8 @@ class Handler(SimpleHTTPRequestHandler):
                     corpo = {}
                     if self.corpo_cru and 'json' in (self.headers.get('Content-Type') or ''):
                         corpo = json.loads(self.corpo_cru)
+                        if not isinstance(corpo, dict):
+                            raise Erro('O corpo precisa ser um objeto JSON.')
                     self.responder(200, fn(self, m, corpo))
                 except Erro as e:
                     self.responder(e.status, {'erro': str(e)})
@@ -544,6 +560,12 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 ini = max(0, tamanho - int(faixa.group(2)))
             fim = min(fim, tamanho - 1)
+            if ini > fim:   # faixa fora do arquivo
+                self.send_response(416)
+                self.send_header('Content-Range', f'bytes */{tamanho}')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             self.send_response(206)
             self.send_header('Content-Range', f'bytes {ini}-{fim}/{tamanho}')
         else:
@@ -565,6 +587,10 @@ class Handler(SimpleHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     return
                 restante -= len(bloco)
+
+    def do_HEAD(self):
+        # o do_HEAD herdado serviria qualquer arquivo da raiz do repositório (só os cabeçalhos); o app não usa HEAD
+        self.send_error(405)
 
     def do_POST(self):
         self.api('POST')

@@ -36,7 +36,7 @@ class Isolado(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.raiz = Path(tmp.name)
-        for nome, valor in (('PROJETOS', self.raiz / 'projects'), ('FILA', self.raiz / 'fila.jsonl')):
+        for nome, valor in (('RAIZ', self.raiz), ('PROJETOS', self.raiz / 'projects'), ('FILA', self.raiz / 'fila.jsonl')):
             p = mock.patch.object(B, nome, valor)
             p.start()
             self.addCleanup(p.stop)
@@ -205,6 +205,100 @@ class Modelo3DPeloApp(Api):
         self.assertEqual(sorted(n['id'] for n in B.nos(self.slug)), sorted(set(antes) - {a['p_3d'], a['mod']}))
         self.assertEqual(self.pedir('POST', f'{self.url}/{a["p_3d"]}/restaurar')[0], 200)
         self.assertEqual(sorted(n['id'] for n in B.nos(self.slug)), antes)
+
+
+def pagina_com_print(slug: str, img: str, versao: str = 'v1') -> str:
+    d = B.pasta(slug) / 'impl' / img / versao
+    d.mkdir(parents=True)
+    (d / 'captura.png').write_bytes(base64.b64decode(PNG))
+    return f'{img}/{versao}'
+
+
+class Entradas(Api):
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Modelos')['slug']
+        self.a = arvore_3d(self.slug)
+        with B.travado(self.slug):
+            self.ref = B.novo_no(self.slug, 'referencia', tela=self.a['tela'], pos={'x': 0, 'y': 0})['id']
+        self.pagina = pagina_com_print(self.slug, self.a['img'])
+        self.url = f'/api/projetos/{self.slug}/nos'
+        self.validas = [self.a['img'], self.ref, self.pagina]
+        self.ruins = ['NAO-999', '../../etc', 42, self.a['mod'], f'{self.a["img"]}/v9', self.a['tela']]
+
+    def test_criar_aceita_imagem_referencia_e_pagina_com_print(self):
+        status, no = self.pedir('POST', self.url, {'tipo': 'pedido', 'entradas': [*self.ruins, *self.validas]})
+        self.assertEqual((status, no['entradas'], no['tela']), (200, self.validas, self.a['tela']))
+
+    def test_pedido_so_da_pagina_herda_a_tela_da_imagem(self):
+        status, no = self.pedir('POST', self.url, {'tipo': 'pedido', 'entradas': [self.pagina]})
+        self.assertEqual((status, no['entradas'], no['tela']), (200, [self.pagina], self.a['tela']))
+
+    def test_mudar_valida_como_criar(self):
+        _, no = self.pedir('POST', self.url, {'tipo': 'pedido', 'tela': self.a['tela']})
+        status, no = self.pedir('PATCH', f'{self.url}/{no["id"]}', {'entradas': [*self.ruins, *self.validas, self.ref]})
+        self.assertEqual((status, no['entradas']), (200, self.validas))
+        self.assertEqual(B.ler_no(self.slug, no['id'])['entradas'], self.validas)
+
+
+class ErrosDoServidor(Api):
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Loja')['slug']
+
+    def test_corpo_que_nao_e_objeto(self):
+        self.assertEqual(self.pedir('POST', '/api/projetos', [1])[0], 422)
+
+    def test_projeto_inexistente_nao_ganha_pasta(self):
+        self.assertEqual(self.pedir('PATCH', '/api/projetos/fantasma', {'nome': 'x'})[0], 404)
+        self.assertEqual(self.pedir('PUT', '/api/projetos/fantasma/brief', {'texto': 'x'})[0], 404)
+        self.assertFalse((B.PROJETOS / 'fantasma').exists())
+
+    def cru(self, metodo, caminho, **cabecalhos):
+        c = http.client.HTTPConnection('127.0.0.1', self.porta, timeout=10)
+        c.request(metodo, caminho, headers=cabecalhos)
+        r = c.getresponse()
+        corpo = r.read()
+        c.close()
+        return r, corpo
+
+    def test_range(self):
+        arq = f'/projects/{self.slug}/brief.md'
+        tamanho = (B.pasta(self.slug) / 'brief.md').stat().st_size
+        r, corpo = self.cru('GET', arq, Range='bytes=2-4')
+        self.assertEqual((r.status, len(corpo), r.getheader('Content-Range')), (206, 3, f'bytes 2-4/{tamanho}'))
+        r, _ = self.cru('GET', arq, Range='bytes=999999-')
+        self.assertEqual((r.status, r.getheader('Content-Range')), (416, f'bytes */{tamanho}'))
+        r, corpo = self.cru('GET', arq)
+        self.assertEqual((r.status, len(corpo)), (200, tamanho))
+
+    def test_head_nao_serve_a_raiz_do_repositorio(self):
+        for caminho in ('/ferramentas/base.py', '/README.md', '/.env'):
+            self.assertEqual(self.cru('HEAD', caminho)[0].status, 405, caminho)
+
+
+class Video(Isolado):
+    def test_entrada_de_pagina_usa_o_print(self):
+        import gerar_video
+        slug = B.criar_projeto('Modelos')['slug']
+        a = arvore_3d(slug)
+        pagina = pagina_com_print(slug, a['img'])
+        with B.travado(slug):
+            lixo = B.novo_no(slug, 'imagem', pedido=a['p_img'], arquivo='images/sumiu.png')['id']   # arquivo que não existe mais
+            pid = B.novo_no(slug, 'pedido', tela=a['tela'], entradas=[lixo, pagina], midia='video', modelos=['m/x'])['id']
+        visto = {}
+
+        def gerar_um(p, prompt, url_img, *resto):
+            visto['url'] = url_img
+            return dict(p, status='failed', erro='teste', segundos=0)
+        catalogo = {'m/x': {'id': 'm/x', 'name': 'M: X', 'supported_durations': [4], 'supported_resolutions': ['720p']}}
+        with mock.patch.object(gerar_video, 'chave', lambda: 'chave-de-teste'), \
+                mock.patch.object(gerar_video, 'catalogo_api', lambda key: catalogo), \
+                mock.patch.object(gerar_video, 'gerar_um', gerar_um), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            gerar_video.por_pedido(pid, 'prompt', confirmado=False)
+        self.assertTrue(visto['url'].startswith('data:image/png;base64,'))
+        self.assertEqual(B.ler_no(slug, pid)['status'], 'erro')   # fechou (o vídeo de teste "falhou"), não ficou preso
 
 
 class Gerar(Isolado):

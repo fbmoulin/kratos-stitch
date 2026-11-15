@@ -33,6 +33,9 @@ FORA = {'heygen/heygen-video-1', 'heygen/avatar-iv', 'black-forest-labs/flux-vid
         'runway/aleph-2'}
 
 
+IMAGEM = {'.png', '.jpg', '.jpeg', '.webp'}
+
+
 def catalogo_api(key: str) -> dict:
     return {m['id']: m for m in pedir('GET', '/videos/models', key)['data']}
 
@@ -121,10 +124,10 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     if pedido.get('tipo') != 'pedido' or pedido.get('midia') != 'video':
         sys.exit(f'ERRO: {pid} não é um pedido de vídeo.')
     pasta = B.pasta(slug)
-    entrada = next((n for n in (B.ler_no(slug, e) for e in pedido.get('entradas', [])) if n.get('arquivo')), None)
-    if not entrada:
+    # a 1ª entrada com imagem no disco: um nó, ou uma página IMG/vN (pelo print dela)
+    img = next((f for e in pedido.get('entradas', []) if (f := B.arquivo_entrada(slug, e)) and f.suffix.lower() in IMAGEM), None)
+    if not img:
         sys.exit('ERRO: o pedido de vídeo precisa de uma imagem de entrada.')
-    img = pasta / entrada['arquivo']
     key = chave()
     catalogo = catalogo_api(key)
     planos = [plano(catalogo[m], pedido.get('duracao') or 6, pedido.get('resolucao') or '720p') for m in pedido.get('modelos', []) if m in catalogo]
@@ -139,7 +142,7 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
               f'${tetos["diario_usd"]:.2f}). Pergunte ao usuário e rode com --confirmado.')
         sys.exit(3)
     url_img = data_url(img)
-    largura, altura = entrada.get('largura') or 1280, entrada.get('altura') or 720
+    largura, altura = B.medidas(img) or (1280, 720)
     nossos = B.modelos_video(todos=True)  # os nomes curtos ("Hailuo 3"); o catálogo da API traz "MiniMax: H3"
     with B.travado(slug):
         pedido = B.ler_no(slug, pid)

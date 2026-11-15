@@ -119,7 +119,8 @@ def gravar_json(caminho: Path, dados) -> None:
 @contextmanager
 def travado(slug: str):
     """Trava exclusiva do projeto (servidor e scripts): ler → mudar → gravar sem corrida."""
-    pasta(slug).mkdir(parents=True, exist_ok=True)
+    if not pasta(slug).is_dir():   # não cria a pasta de um projeto que não existe
+        raise KeyError(f'projeto não encontrado: {slug}')
     with open(pasta(slug) / '.lock', 'w') as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
@@ -233,6 +234,7 @@ def criar_projeto(nome: str, tipo: str = 'webapp', descricao: str = '', prefixo:
         'slug': slug, 'nome': nome.strip(), 'prefixo': prefixo, 'tipo': tipo,
         'criado': agora(), 'padroes': {**PADROES, **PADROES_POR_TIPO[tipo]}, 'tetos': dict(TETOS), 'contador': 0,
     }
+    pasta(slug).mkdir(parents=True)
     with travado(slug):
         for sub in SUBPASTAS:
             (pasta(slug) / sub).mkdir(parents=True, exist_ok=True)
