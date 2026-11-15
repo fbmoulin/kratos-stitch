@@ -61,6 +61,12 @@ class Prefixo(Isolado):
             B.criar_projeto('Loja', prefixo='ab1')
         self.assertEqual(list(B.PROJETOS.iterdir()), [])
 
+    def test_prefixo_de_outro_projeto_e_recusado(self):
+        B.criar_projeto('JarvisOS', prefixo='JAR')
+        with self.assertRaises(ValueError):
+            B.criar_projeto('Jarvis 2', prefixo='jar')
+        self.assertEqual(B.projetos(), ['jarvisos'])
+
     def test_nome_normal_nao_mudou(self):
         self.assertEqual(B.criar_projeto('Loja')['prefixo'], 'LOJ')
         self.assertEqual(B.criar_projeto('JarvisOS', prefixo='JAR')['prefixo'], 'JAR')
@@ -98,8 +104,9 @@ class Modelo3D(Isolado):
         a, todos = self.a, B.nos(self.slug)
         self.assertEqual(B.galho(todos, a['p_3d']), [a['mod']])
         self.assertEqual(set(B.galho(todos, a['vid'])), {a['p_ast'], a['ast']})
-        self.assertEqual(set(B.galho(todos, a['img'])),
-                         {a['p_3d'], a['mod'], a['p_vid'], a['vid'], a['p_ast'], a['ast'], a['p_pag'], a['da_pagina']})
+        # o pedido que parte de uma página (p_pag) pende da tela: não sai junto com a imagem
+        self.assertEqual(set(B.galho(todos, a['img'])), {a['p_3d'], a['mod'], a['p_vid'], a['vid'], a['p_ast'], a['ast']})
+        self.assertIn(a['p_pag'], B.galho(todos, a['tela']))
 
     def test_galho_de_tela_e_de_referencia_nao_mudou(self):
         slug = B.criar_projeto('Refs')['slug']
@@ -162,6 +169,11 @@ class Origem(Api):
 
     def test_host_forjado_nao_le(self):
         self.assertEqual(self.pedir('GET', '/api/projetos', Host='evil.test')[0], 403)
+
+    def test_arquivos_dos_projetos_tambem_recusam_host_forjado(self):
+        arq = f'/projects/{self.slug}/projeto.json'
+        self.assertEqual(self.pedir('GET', arq, Host='evil.test')[0], 403)
+        self.assertEqual(self.pedir('GET', arq)[0], 200)
 
     def test_o_app_e_o_curl_continuam_passando(self):
         for origem in (f'http://localhost:{self.porta}', 'http://localhost:5173', 'http://127.0.0.1:5173', None):
@@ -239,6 +251,13 @@ class Entradas(Api):
         status, no = self.pedir('PATCH', f'{self.url}/{no["id"]}', {'entradas': [*self.ruins, *self.validas, self.ref]})
         self.assertEqual((status, no['entradas']), (200, self.validas))
         self.assertEqual(B.ler_no(self.slug, no['id'])['entradas'], self.validas)
+
+
+    def test_mudar_mantem_o_que_o_pedido_ja_tinha(self):
+        with B.travado(self.slug):   # como o `neo.py pedido --entradas IMG,VIDEO`
+            pid = B.novo_no(self.slug, 'pedido', tela=self.a['tela'], entradas=[self.a['img'], self.a['vid']])['id']
+        status, no = self.pedir('PATCH', f'{self.url}/{pid}', {'entradas': [self.a['vid'], self.a['mod']]})   # tirou a imagem
+        self.assertEqual((status, no['entradas']), (200, [self.a['vid']]))
 
 
 class ErrosDoServidor(Api):
@@ -336,6 +355,27 @@ class Gerar(Isolado):
         self.assertEqual([n['tipo'] for n in nos.values()], ['brief', 'tela', 'pedido'])
         self.assertEqual((nos[self.pid]['status'], nos[self.pid]['saidas']), ('rascunho', []))
         self.assertEqual(self.chamadas, [])
+
+    def test_sem_chave_o_pedido_pego_volta_como_erro(self):
+        def sem_chave():
+            sys.exit('ERRO: defina OPENROUTER_API_KEY')
+        neo.alterar(self.slug, self.pid, status='trabalhando')   # o `neo.py pegar`
+        self.rodar('--prompt', 'a', chave=sem_chave)
+        ped = self.estado()[self.pid]
+        self.assertEqual((ped['status'], ped['saidas']), ('erro', []))
+        self.assertIn('OPENROUTER_API_KEY', ped['erro'])
+
+    def test_placeholder_apagado_no_meio_nao_prende_o_pedido(self):
+        apagou = threading.Lock()
+
+        def pedir_e_apaga(*a, **k):
+            if apagou.acquire(blocking=False):   # uma vez só: o usuário apaga um placeholder enquanto as imagens são geradas
+                B.caminho_no(self.slug, next(n['id'] for n in B.nos(self.slug) if n.get('gerando'))).unlink()
+            return {'data': [{'b64_json': PNG}], 'usage': {'cost': 0.14}}
+        codigo, saida = self.rodar('--prompt', 'a', '--prompt', 'b', pedir=pedir_e_apaga)
+        nos = self.estado()
+        self.assertEqual(nos[self.pid]['status'], 'concluido', saida)
+        self.assertFalse([n['id'] for n in nos.values() if n.get('gerando')])
 
     def test_gera_e_fecha_o_pedido(self):
         neo.alterar(self.slug, self.pid, status='trabalhando')   # o que o `neo.py pegar` faz antes do gerar.py

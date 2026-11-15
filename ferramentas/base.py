@@ -225,6 +225,8 @@ def criar_projeto(nome: str, tipo: str = 'webapp', descricao: str = '', prefixo:
     prefixo = (prefixo or prefixo_livre(nome)).upper()
     if not re.fullmatch(r'[A-Z]{2,5}', prefixo):   # antes de criar a pasta: um prefixo ruim não deixa projeto pela metade
         raise ValueError(f'prefixo inválido: {prefixo!r} (2 a 5 letras)')
+    if prefixo in {ler_projeto(s).get('prefixo') for s in projetos()}:   # dois projetos com o mesmo prefixo dariam os mesmos códigos
+        raise ValueError(f'o prefixo {prefixo} já é de outro projeto')
     slug = slug or slugify(nome)
     base_slug, n = slug, 2
     while (PROJETOS / slug).exists():
@@ -291,6 +293,15 @@ def novo_no(slug: str, tipo: str, **campos) -> dict:
         for k, v in (('entradas', []), ('intencao', ''), ('literal', False), ('status', 'rascunho'), ('saidas', [])):
             no.setdefault(k, v)
     return gravar_no(slug, no)
+
+
+def devolver_pedido(slug: str, pid: str, motivo: str) -> None:
+    """O pedido que não vai ser atendido (falta a chave) deixa de girar: volta como erro, e o usuário pode reenviar."""
+    with travado(slug):
+        pedido = ler_no(slug, pid)
+        if pedido.get('status') in ('enviado', 'trabalhando'):
+            pedido.update(status='erro', erro=motivo)
+            gravar_no(slug, pedido)
 
 
 def comentar(slug: str, id_: str, autor: str, texto: str, pin: dict | None = None) -> dict:
@@ -567,8 +578,9 @@ def galho(todos: list[dict], id_: str) -> list[str]:
         if n['tipo'] == 'tela':
             pai.setdefault(n['id'], n.get('pai') or brief)
         elif n['tipo'] == 'pedido':
-            # uma página (IMG/vN) não é nó: o pedido que parte dela pende da imagem (se o vídeo dela sair, ele fica)
-            ent = [por_id[e.split('/')[0]] for e in n.get('entradas') or [] if isinstance(e, str) and e.split('/')[0] in por_id]
+            # uma página (IMG/vN) não é nó: o pedido que parte dela (ex.: o de um design system) pende da tela e não sai
+            # junto com a imagem. No app ele pende da página; aqui, apagar de menos é o lado seguro
+            ent = [por_id[e] for e in n.get('entradas') or [] if isinstance(e, str) and e in por_id]
             img = next((e for e in ent if e['tipo'] in ('imagem', 'video')), None)
             ref = next((e for e in ent if e['tipo'] == 'referencia'), None)
             if img:

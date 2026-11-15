@@ -314,13 +314,14 @@ def criar_no(h, m, corpo):
         return B.novo_no(slug, tipo, **extra, **campos)
 
 
-def entradas_validas(slug: str, existentes: dict, entradas) -> list[str]:
-    """O que pode entrar num pedido pelo app: imagens, referências e páginas com print (<IMG>/<vN>), sem repetir."""
+def entradas_validas(slug: str, existentes: dict, entradas, ja: tuple = ()) -> list[str]:
+    """O que pode entrar num pedido pelo app: imagens, referências e páginas com print (<IMG>/<vN>), sem repetir.
+    `ja`: o que o pedido já tinha (ex.: um vídeo posto pelo neo.py) fica, porque o app sempre manda a lista inteira."""
     out: list[str] = []
     for e in entradas or []:
         if not isinstance(e, str) or e in out:
             continue
-        if existentes.get(e, {}).get('tipo') in ('imagem', 'referencia') or (
+        if e in ja or existentes.get(e, {}).get('tipo') in ('imagem', 'referencia') or (
                 re.fullmatch(ID + r'/v\d+(?:\.\d+)?', e) and e.split('/')[0] in existentes and B.arquivo_entrada(slug, e)):
             out.append(e)
     return out
@@ -349,7 +350,8 @@ def mudar_no(h, m, corpo):
         if no['tipo'] == 'pedido' and no.get('status') != 'rascunho' and SO_RASCUNHO & campos.keys():
             raise Erro('Este pedido já foi enviado; crie um novo a partir dele.')
         if 'entradas' in campos:
-            campos['entradas'] = entradas_validas(slug, {n['id']: n for n in B.nos(slug)}, campos['entradas'])
+            campos['entradas'] = entradas_validas(slug, {n['id']: n for n in B.nos(slug)}, campos['entradas'],
+                                                  tuple(no.get('entradas') or ()))
         no.update(campos)
         return B.gravar_no(slug, no)
 
@@ -535,6 +537,10 @@ class Handler(SimpleHTTPRequestHandler):
         if caminho.startswith('/api/'):
             return self.api('GET')
         if caminho.startswith('/projects/'):
+            try:
+                so_do_app(self)
+            except Erro as e:
+                return self.responder(e.status, {'erro': str(e)})
             alvo = (B.RAIZ / unquote(caminho).lstrip('/')).resolve()
             if not str(alvo).startswith(str(B.PROJETOS.resolve())) or not alvo.is_file():
                 return self.responder(404, {'erro': 'arquivo não encontrado'})

@@ -88,9 +88,15 @@ export function useProjeto(slug: string) {
       for (const [id, pos] of Object.entries(mapa))
         locais.current.set(id, { campos: { ...(locais.current.get(id)?.campos || {}), pos }, ate: Date.now() + 4000 })
       setEstado((e) => (e ? { ...e, nos: e.nos.map((n) => (mapa[n.id] ? { ...n, pos: mapa[n.id] } : n)) } : e))
-      return api.posicoes(slug, mapa).then(() => true).catch((e) => { setErro(e.message); return false })
+      return api.posicoes(slug, mapa).then(() => true).catch((e) => {
+        // o servidor não gravou: as posições otimistas saem e a tela volta ao que está no disco
+        for (const id of Object.keys(mapa)) locais.current.delete(id)
+        setErro(e.message)
+        carregar(true)
+        return false
+      })
     },
-    [slug],
+    [slug, carregar],
   )
 
   /** Roda uma ação no servidor, mostra o erro se houver e recarrega. */

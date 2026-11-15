@@ -128,7 +128,11 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     img = next((f for e in pedido.get('entradas', []) if (f := B.arquivo_entrada(slug, e)) and f.suffix.lower() in IMAGEM), None)
     if not img:
         sys.exit('ERRO: o pedido de vídeo precisa de uma imagem de entrada.')
-    key = chave()
+    try:
+        key = chave()
+    except SystemExit as e:
+        B.devolver_pedido(slug, pid, str(e.code))
+        raise
     catalogo = catalogo_api(key)
     planos = [plano(catalogo[m], pedido.get('duracao') or 6, pedido.get('resolucao') or '720p') for m in pedido.get('modelos', []) if m in catalogo]
     if not planos:
@@ -163,27 +167,39 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
         vid, p = par
         r = gerar_um(p, prompt, url_img, '16:9' if largura >= altura else '9:16', key, pasta / 'videos' / f'{vid}.mp4', pasta / 'thumbs' / f'{vid}.jpg')
         with B.travado(slug):
-            v = B.ler_no(slug, vid)
-            v.pop('gerando', None)
-            if r['status'] == 'completed':
-                v.update(arquivo=f'videos/{vid}.mp4', thumb=f'thumbs/{vid}.jpg' if r.get('capa') else None, custo=r.get('custo'), segundos=r['segundos'])
-            else:
-                v.update(erro=r.get('erro') or r['status'], custo=r.get('custo'))
-            B.gravar_no(slug, v)
+            v = B.ler_json(B.caminho_no(slug, vid))
+            if v:   # o usuário pode ter apagado o placeholder no meio
+                v.pop('gerando', None)
+                if r['status'] == 'completed':
+                    v.pop('erro', None)
+                    v.update(arquivo=f'videos/{vid}.mp4', thumb=f'thumbs/{vid}.jpg' if r.get('capa') else None, custo=r.get('custo'), segundos=r['segundos'])
+                else:
+                    v.update(erro=r.get('erro') or r['status'], custo=r.get('custo'))
+                B.gravar_no(slug, v)
         return r
 
     (pasta / 'videos').mkdir(exist_ok=True)
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        res = list(ex.map(um, zip(ids, planos)))
-    ok = sum(r['status'] == 'completed' for r in res)
-    custo = sum(r.get('custo') or 0 for r in res)
-    with B.travado(slug):
-        pedido = B.ler_no(slug, pid)
-        pedido.update(status='concluido' if ok else 'erro', custo=round((pedido.get('custo') or 0) + custo, 4), concluido_em=B.agora())
-        if not ok:
-            pedido['erro'] = 'Nenhum vídeo foi gerado (veja o erro em cada nó).'
-        B.gravar_no(slug, pedido)
-    print(f'{pid}: {ok}/{len(res)} vídeos · ${custo:.2f} · {", ".join(ids)}')
+    try:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            list(ex.map(um, zip(ids, planos)))
+    finally:   # também quando a geração é interrompida: o pedido fecha pelo que ficou no disco e nada segue "gerando"
+        with B.travado(slug):
+            ok, custo = 0, 0.0
+            for vid in ids:
+                v = B.ler_json(B.caminho_no(slug, vid))
+                if not v:
+                    continue
+                if v.pop('gerando', None):
+                    v['erro'] = 'A geração foi interrompida.'
+                    B.gravar_no(slug, v)
+                ok += bool(v.get('arquivo'))
+                custo += v.get('custo') or 0
+            pedido = B.ler_no(slug, pid)
+            pedido.update(status='concluido' if ok else 'erro', custo=round((pedido.get('custo') or 0) + custo, 4), concluido_em=B.agora())
+            if not ok:
+                pedido['erro'] = 'Nenhum vídeo foi gerado (veja o erro em cada nó).'
+            B.gravar_no(slug, pedido)
+    print(f'{pid}: {ok}/{len(ids)} vídeos · ${custo:.2f} · {", ".join(ids)}')
     sys.exit(0 if ok else 1)
 
 

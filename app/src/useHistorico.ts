@@ -24,6 +24,7 @@ export function useHistorico(opts: {
   const pilhas = useRef<{ desfazer: Passo[]; refazer: Passo[] }>({ desfazer: [], refazer: [] })
   const lote = useRef<Passo[] | null>(null)
   const fila = useRef<Promise<unknown>>(Promise.resolve())  // desfazer/refazer rodam um de cada vez
+  const falhou = useRef<Passo | null>(null)                 // o passo que o servidor recusou na última tentativa
 
   const registrar = useCallback((p: Passo) => {
     if (lote.current) { lote.current.push(p); return }
@@ -87,14 +88,19 @@ export function useHistorico(opts: {
     })
   }, [slug, acao, registrar])
 
-  /** Roda o passo do topo de uma pilha: `null` = nada a fazer, `false` = falhou (o passo fica onde estava), `true` = feito. */
+  /** Roda o passo do topo de uma pilha: `null` = nada a fazer, `false` = falhou (o passo fica onde estava), `true` = feito.
+   * Um passo que falha duas vezes seguidas sai da pilha: o servidor não vai aceitá-lo (ex.: mudar um pedido já enviado),
+   * e ele não pode prender o que veio antes. */
   const andar = useCallback((de: 'desfazer' | 'refazer') => {
     const r = fila.current.then(async () => {
       const p = pilhas.current[de].at(-1)
       if (!p) return null
-      if ((await p[de]().catch(() => false)) === false) return false
+      const ok = (await p[de]().catch(() => false)) !== false
       const i = pilhas.current[de].lastIndexOf(p)
+      if (!ok && falhou.current !== p) { falhou.current = p; return false }
+      falhou.current = null
       if (i >= 0) pilhas.current[de].splice(i, 1)
+      if (!ok) return false
       pilhas.current[de === 'desfazer' ? 'refazer' : 'desfazer'].push(p)
       return true
     })

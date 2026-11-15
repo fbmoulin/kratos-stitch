@@ -91,7 +91,11 @@ def main() -> None:
             v['tese'] = teses[v['nome']]
 
     # a chave e as referências antes de criar qualquer coisa: se faltarem, o pedido não fica preso em "trabalhando"
-    key = chave()
+    try:
+        key = chave()
+    except SystemExit as e:
+        B.devolver_pedido(slug, pid, str(e.code))
+        raise
     entradas = [{'type': 'image_url', 'image_url': {'url': data_url(r)}} for r in refs]
 
     # 1. variações no pedido + placeholders
@@ -134,10 +138,13 @@ def main() -> None:
         except Exception as e:  # noqa: BLE001
             campos, ok = {'erro': str(e)[:600]}, False
         with B.travado(slug):
-            img = B.ler_no(slug, iid)
-            img.pop('gerando', None)
-            img.update(campos)
-            B.gravar_no(slug, img)
+            img = B.ler_json(B.caminho_no(slug, iid))
+            if img:   # o usuário pode ter apagado o placeholder no meio
+                img.pop('gerando', None)
+                if ok:
+                    img.pop('erro', None)
+                img.update(campos)
+                B.gravar_no(slug, img)
         print(f'{iid} {"ok" if ok else "ERRO"} {campos.get("custo") or campos.get("erro", "")}', flush=True)
         return ok
 
@@ -148,7 +155,9 @@ def main() -> None:
         with B.travado(slug):
             prontas, custo = 0, 0.0
             for i in imagens:
-                img = B.ler_no(slug, i)
+                img = B.ler_json(B.caminho_no(slug, i))
+                if not img:
+                    continue
                 if img.pop('gerando', None):
                     img['erro'] = 'A geração foi interrompida.'
                     B.gravar_no(slug, img)

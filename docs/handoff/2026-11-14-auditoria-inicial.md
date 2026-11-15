@@ -79,3 +79,47 @@ Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projeto
 ```
 Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -3, uvx pytest tests -q, curl localhost:8730/api/projetos). Branch local correcoes-auditoria, sem push. Próximos: validação de entradas em criar_no/PATCH e gerar_video.py com IMG/vN; depois o frontend (Canvas.tsx:246-253, useProjeto.ts:18 e 66-70, useHistorico.ts:86-100), cada um com teste antes.
 ```
+
+---
+
+# Atualização 2 (mesma sessão) — entradas, erros do servidor, frontend e revisão de código
+
+## Estado medido
+
+- Branch `correcoes-auditoria`, enviada para o remote `kratos` (https://github.com/fbmoulin/kratos-stitch, privado). `origin` (o repo do autor) não recebeu nada. Sem CI no repositório.
+- `python3 -m unittest discover -s tests` → 31 testes, OK. `ruff check ferramentas` → 21 avisos (linha de base). `npm --prefix app run build` ok; `oxlint` 9 avisos (linha de base).
+- Chaves: `/api/config` mostra `OPENROUTER_API_KEY` e `FAL_KEY` com origem `.env` (valores não lidos). Nenhuma geração paga foi feita nesta sessão.
+- Servidor real reiniciado com o código novo em http://localhost:8730/.
+
+## O que entrou
+
+- Backend: criar/mudar pedido validam `entradas` (imagem, referência, página com print; o que o pedido já tinha fica); corpo JSON não-objeto → 422; faixa fora do arquivo → 416; HEAD → 405; `travado()` não cria pasta de projeto inexistente; `gerar_video.py` aceita página como entrada.
+- Frontend (`app/src`): erro de ação fica até o clique; erro de rede some na leitura seguinte; ⌘Z recusado não diz "Desfeito"; atalhos travados com visualizador/modal aberto; nós do React Flow reaproveitados; rascunho de comentário e erro da Home.
+- Da revisão de código (10 achados, 9 corrigidos): sem chave o pedido pego volta como `erro`; placeholder apagado no meio não prende o pedido; imagem que chega depois de marcada como interrompida perde o `erro`; `gerar_video.py` ganhou o mesmo `finally`; PATCH de `entradas` mantém o que já existia; posições recusadas voltam ao disco; passo de desfazer recusado duas vezes sai da pilha; prefixo explícito repetido é recusado; `/projects/*` também recusa Host/Origin de fora; `galho()` voltou a NÃO contar página como pai (um pedido de design system não sai junto com a imagem).
+
+## Verificado no navegador (cópia isolada, porta 8731)
+
+- Mudança vinda do servidor: 10 nós montados antes e depois, os mesmos elementos, nenhum escondido.
+- PATCH recusado: o toast continua depois de 5 s e some no clique.
+- ⌘Z com o servidor recusando: sem "Desfeito"; na 2ª recusa o passo sai e o ⌘Z seguinte desfaz o passo anterior.
+- Com Config ou o visualizador aberto: `D`, `1`, `2`, ⌘A, ⌘1 e ⌘Z não mudam nada.
+- Não medi o antes/depois de desempenho; o ganho de re-medição vem da leitura do código do xyflow.
+
+## Limites conhecidos
+
+- SIGTERM em `gerar.py`/`gerar_video.py` pula o `finally` (saída: `neo.py erro <pedido>`).
+- Um lote de desfazer que falha no meio fica meio desfeito.
+- Nó fora da tela cujo conteúdo mudou só é re-medido quando volta à vista.
+- Colar imagem com o visualizador aberto ainda cria referência.
+
+## Itens abertos
+
+- Drift de docs (README `F`/Favorita, `impl.py:106` "seção 4", skill `video2html` ausente, Chrome nos requisitos).
+- Divisão do contexto/memo dos nós; `emLote` capturando ações alheias; bundle único de 515 kB.
+- Teste de ponta a ponta com geração real (gasta dinheiro: só com o seu ok).
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -5, python3 -m unittest discover -s tests, curl localhost:8730/api/projetos, git ls-remote kratos). Branch correcoes-auditoria, remote kratos (privado); nunca enviar para origin. Próximos: drift de docs e, com o meu ok, um teste de ponta a ponta com uma geração real barata.
+```
