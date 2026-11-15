@@ -479,6 +479,51 @@ gerar.main()
         self.assertEqual((ped['status'], 'gerador' in ped), ('erro', False))
         self.assertFalse([n['id'] for n in B.nos(self.slug) if n.get('gerando')])
 
+    def test_o_varredor_do_servidor_solta_os_orfaos(self):
+        pid, a, _ = self.pedido(pid_morto())
+
+        class Chega(Exception):
+            pass
+
+        def uma_volta(_segundos):
+            raise Chega
+        with mock.patch.object(servidor.time, 'sleep', uma_volta), self.assertRaises(Chega):
+            servidor.varredor()
+        self.assertEqual(B.ler_no(self.slug, pid)['status'], 'erro')
+        self.assertNotIn('gerando', B.ler_no(self.slug, a))
+
+    def test_sigterm_no_gerador_de_video(self):
+        import signal
+        import subprocess
+        import time
+        with B.travado(self.slug):
+            img = B.novo_no(self.slug, 'imagem', arquivo='images/x.png')['id']
+            (B.pasta(self.slug) / 'images' / 'x.png').write_bytes(base64.b64decode(PNG))
+            pid = B.novo_no(self.slug, 'pedido', tela='LOJ-002', status='trabalhando', midia='video', entradas=[img], modelos=['m/x'])['id']
+        codigo = f"""
+import sys, time
+sys.path.insert(0, {str(Path(gerar.__file__).parent)!r})
+from pathlib import Path
+import base as B, gerar_video
+B.RAIZ = Path({str(self.raiz)!r}); B.PROJETOS = B.RAIZ / 'projects'; B.FILA = B.RAIZ / 'fila.jsonl'
+B.medidas = lambda arquivo: (16, 9)
+gerar_video.chave = lambda: 'chave-de-teste'
+gerar_video.catalogo_api = lambda key: {{'m/x': {{'id': 'm/x', 'name': 'M: X', 'supported_durations': [4], 'supported_resolutions': ['720p']}}}}
+gerar_video.gerar_um = lambda *a, **k: time.sleep(60)
+gerar_video.por_pedido({pid!r}, 'prompt', confirmado=False)
+"""
+        p = subprocess.Popen([sys.executable, '-c', codigo], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(p.kill)
+        fim = time.time() + 10
+        while time.time() < fim and 'gerador' not in B.ler_no(self.slug, pid):
+            time.sleep(0.05)
+        self.assertIn('gerador', B.ler_no(self.slug, pid))
+        p.send_signal(signal.SIGTERM)
+        self.assertEqual(p.wait(timeout=3), 143)
+        ped = B.ler_no(self.slug, pid)
+        self.assertEqual((ped['status'], 'gerador' in ped), ('erro', False))
+        self.assertFalse([n['id'] for n in B.nos(self.slug) if n.get('gerando')])
+
 
 class Preco(Isolado):
     """A estimativa que decide o teto de custo: a tabela, ou o histórico do projeto quando ele é mais caro."""
