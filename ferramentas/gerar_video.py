@@ -163,7 +163,8 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     pasta = B.pasta(slug)
     # a 1ª entrada com imagem no disco: um nó, ou uma página IMG/vN (pelo print dela)
     img = next((f for e in pedido.get('entradas', []) if (f := B.arquivo_entrada(slug, e)) and f.suffix.lower() in IMAGEM), None)
-    if not img:
+    if not img:   # o pedido não vai ser atendido: volta como erro em vez de ficar "enviado"/"trabalhando"
+        B.devolver_pedido(slug, pid, 'O pedido de vídeo precisa de uma imagem de entrada (a que ele tinha não existe mais).')
         sys.exit('ERRO: o pedido de vídeo precisa de uma imagem de entrada.')
     try:
         key = chave()
@@ -173,6 +174,7 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     catalogo = catalogo_api(key)
     planos = [plano(catalogo[m], pedido.get('duracao') or 6, pedido.get('resolucao') or '720p') for m in pedido.get('modelos', []) if m in catalogo]
     if not planos:
+        B.devolver_pedido(slug, pid, 'Nenhum modelo de vídeo válido no pedido.')
         sys.exit('ERRO: nenhum modelo válido no pedido.')
     total = sum(p['estimativa'] for p in planos)
     tetos = {**B.TETOS, **B.ler_projeto(slug).get('tetos', {})}

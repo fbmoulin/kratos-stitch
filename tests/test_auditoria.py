@@ -345,11 +345,10 @@ class EntradasDeRascunho(Api):
     def test_o_que_o_usuario_mudou_no_meio_fica(self):
         a = self.a
         self.apagar(a['p_ast'])
-        with B.travado(self.slug):   # tirou a referência e ligou outra imagem enquanto o asset estava na lixeira
+        with B.travado(self.slug):
             outra = B.novo_no(self.slug, 'imagem', pedido=a['p_img'])['id']
-            no = B.ler_no(self.slug, self.rasc)
-            no['entradas'] = [a['img'], a['vid'], outra]
-            B.gravar_no(self.slug, no)
+        # pelo app: tirou a referência e ligou outra imagem enquanto o asset estava na lixeira
+        self.assertEqual(self.pedir('PATCH', f'{self.url}/{self.rasc}', {'entradas': [a['img'], a['vid'], outra]})[0], 200)
         self.restaurar(a['p_ast'])
         self.assertEqual(self.entradas(), [a['img'], a['ast'], a['vid'], outra])
 
@@ -367,7 +366,26 @@ class EntradasDeRascunho(Api):
         self.restaurar(a['p_ast'])
         self.assertTrue(B.caminho_no(self.slug, a['ast']).exists())
         self.restaurar(self.rasc)
-        self.assertEqual(self.entradas(), [a['img'], self.ref, a['vid']])   # voltou como estava quando foi apagado
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], self.ref, a['vid']])   # o asset voltou antes dele: entra de novo
+
+    def test_lotes_restaurados_fora_de_ordem_mantem_a_ordem_das_entradas(self):
+        a = self.a
+        self.apagar(a['p_ast'])      # sai o asset
+        self.apagar(self.ref)        # depois a referência
+        self.assertEqual(self.entradas(), [a['img'], a['vid']])
+        self.restaurar(a['p_ast'])   # volta primeiro o que saiu primeiro
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], a['vid']])
+        self.restaurar(self.ref)
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], self.ref, a['vid']])
+        self.assertNotIn('entradas_antes', B.ler_no(self.slug, self.rasc))   # tudo de volta: a marca some
+
+    def test_o_que_o_usuario_tirou_pelo_app_nao_volta_num_restaurar(self):
+        a = self.a
+        self.apagar(a['p_ast'])
+        status, _ = self.pedir('PATCH', f'{self.url}/{self.rasc}', {'entradas': [a['img'], a['vid']]})   # tirou a referência
+        self.assertEqual(status, 200)
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], a['vid']])
 
     def test_refazer_e_desfazer_de_novo(self):
         a = self.a
@@ -377,6 +395,38 @@ class EntradasDeRascunho(Api):
             self.restaurar(a['p_ast'])
             self.assertEqual(self.entradas(), [a['img'], a['ast'], self.ref, a['vid']])
         self.assertEqual(list((B.pasta(self.slug) / 'lixeira').iterdir()), [])
+
+
+class EnviarSemEntradaViva(Api):
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Modelos')['slug']
+        self.a = arvore_3d(self.slug)
+        self.url = f'/api/projetos/{self.slug}/nos'
+
+    def pedido(self, **campos):
+        with B.travado(self.slug):
+            return B.novo_no(self.slug, 'pedido', tela=self.a['tela'], **campos)['id']
+
+    def test_pedido_so_com_entradas_que_nao_existem_nao_e_enviado(self):
+        pid = self.pedido(entradas=['NAO-999', f'{self.a["img"]}/v9'])
+        status, dados = self.pedir('POST', f'{self.url}/{pid}/enviar')
+        self.assertEqual(status, 422, dados)
+        self.assertEqual(B.ler_no(self.slug, pid)['status'], 'rascunho')
+        self.assertFalse(B.FILA.exists())
+
+    def test_com_texto_ou_com_uma_entrada_viva_segue_passando(self):
+        for campos in ({'entradas': ['NAO-999'], 'intencao': 'mais neon'}, {'entradas': ['NAO-999', self.a['img']]}):
+            self.assertEqual(self.pedir('POST', f'{self.url}/{self.pedido(**campos)}/enviar')[0], 200, campos)
+
+    def test_video_sem_imagem_de_entrada_devolve_o_pedido(self):
+        import gerar_video
+        pid = self.pedido(midia='video', modelos=['m/x'], entradas=['NAO-999'], status='trabalhando')
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            gerar_video.por_pedido(pid, 'prompt', confirmado=False)
+        ped = B.ler_no(self.slug, pid)
+        self.assertEqual(ped['status'], 'erro')
+        self.assertIn('imagem de entrada', ped['erro'])
 
 
 class ErrosDoServidor(Api):

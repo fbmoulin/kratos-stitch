@@ -329,6 +329,14 @@ def entradas_validas(slug: str, existentes: dict, entradas, ja: tuple = ()) -> l
     return out
 
 
+def entrada_viva(slug: str, e) -> bool:
+    """A entrada ainda existe: o nó está no projeto, ou a página (<IMG>/<vN>) tem o print."""
+    try:
+        return isinstance(e, str) and bool(B.arquivo_entrada(slug, e) if '/' in e else B.caminho_no(slug, e).exists())
+    except ValueError:
+        return False
+
+
 def tela_de(existentes: dict, id_: str | None, fundo: int = 0) -> str | None:
     """A tela (ramo) de um nó: imagem → pedido → tela; referência → a tela onde foi colada."""
     no = existentes.get(id_)
@@ -358,8 +366,10 @@ def campos_validos(slug: str, no: dict, corpo: dict) -> dict:
     if no['tipo'] == 'pedido' and no.get('status') != 'rascunho' and SO_RASCUNHO & campos.keys():
         raise Erro('Este pedido já foi enviado; crie um novo a partir dele.')
     if 'entradas' in campos:
-        campos['entradas'] = entradas_validas(slug, {n['id']: n for n in B.nos(slug)}, campos['entradas'],
-                                              tuple(no.get('entradas') or ()))
+        existentes = {n['id']: n for n in B.nos(slug)}
+        campos['entradas'] = entradas_validas(slug, existentes, campos['entradas'], tuple(no.get('entradas') or ()))
+        if no.get('entradas_antes'):   # o que o usuário tirou agora (e existe) não volta num restaurar; o que está na lixeira, sim
+            no['entradas_antes'] = [e for e in no['entradas_antes'] if e in campos['entradas'] or e not in existentes]
     return campos
 
 
@@ -421,13 +431,12 @@ def apagar(slug: str, ids: list[str]) -> dict:
         sai = {id_, *junto}
         if any(por_id[i]['tipo'] == 'pedido' and por_id[i].get('status') in ('enviado', 'trabalhando') for i in sai):
             raise Erro('Há um pedido em andamento neste galho: espere o Claude terminar.')
-        rascunhos = {}   # rascunhos que ficam tiram as entradas que saíram; o lote guarda como eram, para o restaurar
-        for n in todos:
+        for n in todos:  # rascunhos que ficam tiram as entradas que saíram, e guardam a lista de antes para o restaurar
             if n['id'] not in sai and n.get('status') == 'rascunho' and sai & set(n.get('entradas') or []):
-                rascunhos[n['id']] = n['entradas']
+                n.setdefault('entradas_antes', list(n['entradas']))
                 n['entradas'] = [e for e in n['entradas'] if e not in sai]
                 B.gravar_no(slug, n)
-        B.para_lixeira(slug, id_, junto, rascunhos)
+        B.para_lixeira(slug, id_, junto)
     return {'ok': True, 'apagados': [id_, *junto]}
 
 
@@ -446,7 +455,8 @@ def enviar(h, m, corpo):
         if no['tipo'] == 'pedido':
             if no.get('status') not in ('rascunho', 'erro'):
                 raise Erro('Este pedido já foi enviado.')
-            if not (no.get('intencao') or '').strip() and not no.get('entradas') and not no.get('variacoes'):
+            vivas = [e for e in no.get('entradas') or [] if entrada_viva(slug, e)]
+            if not (no.get('intencao') or '').strip() and not vivas and not no.get('variacoes'):
                 raise Erro('Escreva o que você quer (ou ligue imagens ao pedido).')
             acao = 'video' if no.get('midia') == 'video' else 'gerar'
             if acao == 'video' and not no.get('modelos'):
