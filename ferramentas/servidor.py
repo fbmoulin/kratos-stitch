@@ -62,6 +62,7 @@ CAMPOS_APP = {
     'imagem': _TODO_NO | {'estado'},
     'referencia': _TODO_NO | {'titulo'},
     'video': _TODO_NO | {'estado'},
+    'modelo': _TODO_NO | {'estado'},
     'ds': _TODO_NO | {'estado'},
 }
 MIDIA = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.mp4', '.webm', '.bin', '.glb'}
@@ -196,7 +197,8 @@ def vistas(h, m, corpo):
 
 
 def so_do_app(h) -> None:
-    """As chaves só mudam pelo próprio app: recusa um site qualquer aberto no navegador falando com este servidor local."""
+    """A API é só do próprio app (e da linha de comando): recusa um site qualquer aberto no navegador falando com este
+    servidor local, que poderia ler os projetos ou pôr na fila um pedido pago."""
     locais = ('localhost', '127.0.0.1')
     origem = h.headers.get('Origin')
     if (h.headers.get('Host') or '').rsplit(':', 1)[0] not in locais or (origem and urlparse(origem).hostname not in locais):
@@ -205,13 +207,11 @@ def so_do_app(h) -> None:
 
 @rota('GET', '/api/config')
 def ler_config(h, m, corpo):
-    so_do_app(h)
     return {'chaves': B.chaves()}
 
 
 @rota('PUT', '/api/config/chaves')
 def mudar_chave(h, m, corpo):
-    so_do_app(h)
     B.gravar_chave(str(corpo.get('nome') or ''), str(corpo.get('valor') or ''))
     return {'chaves': B.chaves()}
 
@@ -498,6 +498,7 @@ class Handler(SimpleHTTPRequestHandler):
             m = padrao.match(unquote(url.path))
             if met == metodo and m:
                 try:
+                    so_do_app(self)
                     corpo = {}
                     if self.corpo_cru and 'json' in (self.headers.get('Content-Type') or ''):
                         corpo = json.loads(self.corpo_cru)

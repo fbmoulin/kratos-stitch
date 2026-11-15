@@ -143,6 +143,9 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     nossos = B.modelos_video(todos=True)  # os nomes curtos ("Hailuo 3"); o catálogo da API traz "MiniMax: H3"
     with B.travado(slug):
         pedido = B.ler_no(slug, pid)
+        if any((B.ler_json(B.caminho_no(slug, i)) or {}).get('gerando') for i in pedido.get('saidas') or []):
+            sys.exit(f'ERRO: {pid} já tem vídeos sendo gerados (outra execução do gerar_video.py). Se ela morreu, solte o '
+                     f'pedido com `neo.py erro {pid} "motivo"` e rode de novo.')
         ids = []
         for p in planos:
             nome = (nossos.get(p['modelo']) or {}).get('nome') or catalogo[p['modelo']]['name'].split(': ', 1)[-1]

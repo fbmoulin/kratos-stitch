@@ -252,7 +252,13 @@ def cmd_estado(a):
 
 def cmd_erro(a):
     slug, id_ = B.resolver_codigo(a.codigo)
-    alterar(slug, id_, status='erro', erro=a.mensagem)
+    no = alterar(slug, id_, status='erro', erro=a.mensagem)
+    with B.travado(slug):   # o que ficou "gerando" (o gerar.py morreu no meio) deixa de girar no canvas
+        for i in no.get('saidas') or []:
+            saida = B.ler_json(B.caminho_no(slug, i)) or {}
+            if saida.pop('gerando', None):
+                saida['erro'] = a.mensagem
+                B.gravar_no(slug, saida)
     print('ok')
 
 

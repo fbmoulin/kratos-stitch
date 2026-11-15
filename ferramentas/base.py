@@ -208,26 +208,29 @@ def capa_de(slug: str, cod: str, por_id: dict) -> str | None:
 def prefixo_livre(nome: str) -> str:
     usados = {ler_projeto(s).get('prefixo') for s in projetos()}
     letras = re.sub(r'[^A-Z]', '', unicodedata.normalize('NFKD', nome).encode('ascii', 'ignore').decode().upper()) or 'NEO'
+    letras = letras.ljust(3, 'X')   # nome de uma ou duas letras: o prefixo é sempre de 3 letras (o código não aceita dígito)
+    az = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     candidatos = [letras[:3]] + [letras[0] + letras[i] + letras[j] for i in range(1, len(letras)) for j in range(i + 1, len(letras))]
+    candidatos += [letras[:2] + c for c in az] + [letras[0] + a + b for a in az for b in az]
     for c in candidatos:
-        if len(c) == 3 and c not in usados:
+        if c not in usados:
             return c
-    n = 1
-    while f'{letras[:2]}{n}' in usados:
-        n += 1
-    return f'{letras[:2]}{n}'.ljust(3, 'X')
+    raise ValueError(f'sem prefixo livre para {nome!r}: passe um (2 a 5 letras)')
 
 
 def criar_projeto(nome: str, tipo: str = 'webapp', descricao: str = '', prefixo: str | None = None,
                   tela: str = 'Principal', slug: str | None = None) -> dict:
     """Cria o projeto com o nó Brief e a primeira Tela. Devolve o projeto.json."""
+    prefixo = (prefixo or prefixo_livre(nome)).upper()
+    if not re.fullmatch(r'[A-Z]{2,5}', prefixo):   # antes de criar a pasta: um prefixo ruim não deixa projeto pela metade
+        raise ValueError(f'prefixo inválido: {prefixo!r} (2 a 5 letras)')
     slug = slug or slugify(nome)
     base_slug, n = slug, 2
     while (PROJETOS / slug).exists():
         slug, n = f'{base_slug}-{n}', n + 1
     tipo = tipo if tipo in PADROES_POR_TIPO else 'webapp'
     projeto = {
-        'slug': slug, 'nome': nome.strip(), 'prefixo': (prefixo or prefixo_livre(nome)).upper(), 'tipo': tipo,
+        'slug': slug, 'nome': nome.strip(), 'prefixo': prefixo, 'tipo': tipo,
         'criado': agora(), 'padroes': {**PADROES, **PADROES_POR_TIPO[tipo]}, 'tetos': dict(TETOS), 'contador': 0,
     }
     with travado(slug):
@@ -342,7 +345,7 @@ def custos(slug: str, lista: list[dict] | None = None) -> dict:
     hoje = date.today().isoformat()
     total = dia = 0.0
     for no in lista if lista is not None else nos(slug):
-        if no.get('tipo') in ('imagem', 'video', 'ds') and no.get('custo'):
+        if no.get('tipo') in ('imagem', 'video', 'modelo', 'ds') and no.get('custo'):
             total += no['custo']
             if (no.get('criado') or '').startswith(hoje) and not no.get('legado'):
                 dia += no['custo']
@@ -553,8 +556,8 @@ def para_lixeira(slug: str, id_: str, junto: list[str] | None = None) -> None:
 
 def galho(todos: list[dict], id_: str) -> list[str]:
     """Os descendentes de um nó na árvore de ideias (a mesma regra do app, layout.ts → arvore):
-    brief → telas; tela → pedidos sem entrada de imagem (ou a referência que abre o galho); imagem → pedidos que saíram
-    dela (1ª entrada que é imagem); pedido → suas imagens. Referências soltas usadas só por pedidos do galho vão junto."""
+    brief → telas; tela → pedidos sem entrada de imagem (ou a referência que abre o galho); imagem ou vídeo → pedidos que
+    saíram dele (1ª entrada que é imagem ou vídeo); pedido → o que ele gerou (imagens, vídeos, modelos 3D, design systems). Referências soltas usadas só por pedidos do galho vão junto."""
     por_id = {n['id']: n for n in todos}
     pai: dict[str, str] = {}
     brief = next((n['id'] for n in todos if n['tipo'] == 'brief'), None)
@@ -562,8 +565,9 @@ def galho(todos: list[dict], id_: str) -> list[str]:
         if n['tipo'] == 'tela':
             pai.setdefault(n['id'], n.get('pai') or brief)
         elif n['tipo'] == 'pedido':
-            ent = [por_id[e] for e in n.get('entradas') or [] if e in por_id]
-            img = next((e for e in ent if e['tipo'] == 'imagem'), None)
+            # uma página (IMG/vN) não é nó: o pedido que parte dela pende da imagem (se o vídeo dela sair, ele fica)
+            ent = [por_id[e.split('/')[0]] for e in n.get('entradas') or [] if isinstance(e, str) and e.split('/')[0] in por_id]
+            img = next((e for e in ent if e['tipo'] in ('imagem', 'video')), None)
             ref = next((e for e in ent if e['tipo'] == 'referencia'), None)
             if img:
                 pai.setdefault(n['id'], img['id'])
@@ -572,7 +576,7 @@ def galho(todos: list[dict], id_: str) -> list[str]:
                 pai.setdefault(n['id'], ref['id'])
             elif n.get('tela'):
                 pai.setdefault(n['id'], n['tela'])
-        elif n['tipo'] in ('imagem', 'video', 'ds') and n.get('pedido'):
+        elif n['tipo'] in ('imagem', 'video', 'modelo', 'ds') and n.get('pedido'):
             pai.setdefault(n['id'], n['pedido'])
     filhos: dict[str, list[str]] = {}
     for f, p in pai.items():

@@ -90,9 +90,16 @@ def main() -> None:
         if teses.get(v['nome']):
             v['tese'] = teses[v['nome']]
 
+    # a chave e as referências antes de criar qualquer coisa: se faltarem, o pedido não fica preso em "trabalhando"
+    key = chave()
+    entradas = [{'type': 'image_url', 'image_url': {'url': data_url(r)}} for r in refs]
+
     # 1. variações no pedido + placeholders
     with B.travado(slug):
         pedido = B.ler_no(slug, pid)
+        if any((B.ler_json(B.caminho_no(slug, i)) or {}).get('gerando') for i in pedido.get('saidas') or []):
+            sys.exit(f'ERRO: {pid} já tem imagens sendo geradas (outra execução do gerar.py). Se ela morreu, solte o pedido '
+                     f'com `neo.py erro {pid} "motivo"` e rode de novo.')
         imagens = []
         for v in variacoes:
             img = B.novo_no(slug, 'imagem', pedido=pid, nome=v['nome'], prompt=v['prompt'], modelo=mod, aspecto=aspecto,
@@ -103,9 +110,6 @@ def main() -> None:
                        'iniciado_em': B.agora()})
         pedido.pop('erro', None)
         B.gravar_no(slug, pedido)
-
-    key = chave()
-    entradas = [{'type': 'image_url', 'image_url': {'url': data_url(r)}} for r in refs]
 
     def uma(par):
         iid, v = par
@@ -137,20 +141,28 @@ def main() -> None:
         print(f'{iid} {"ok" if ok else "ERRO"} {campos.get("custo") or campos.get("erro", "")}', flush=True)
         return ok
 
-    with ThreadPoolExecutor(max_workers=min(6, len(variacoes))) as ex:
-        resultados = list(ex.map(uma, zip(imagens, variacoes)))
-
-    with B.travado(slug):
-        pedido = B.ler_no(slug, pid)
-        custo = sum((B.ler_no(slug, i).get('custo') or 0) for i in imagens)
-        pedido['custo'] = round((pedido.get('custo') or 0) + custo, 4)
-        pedido['status'] = 'concluido' if any(resultados) else 'erro'
-        if not any(resultados):
-            pedido['erro'] = 'Nenhuma imagem foi gerada (veja o erro nas imagens).'
-        pedido['concluido_em'] = B.agora()
-        B.gravar_no(slug, pedido)
-    print(f'{pid}: {sum(resultados)}/{len(resultados)} imagens · ${custo:.3f} · {", ".join(imagens)}')
-    sys.exit(0 if any(resultados) else 1)
+    try:
+        with ThreadPoolExecutor(max_workers=min(6, len(variacoes))) as ex:
+            list(ex.map(uma, zip(imagens, variacoes)))
+    finally:   # também quando a geração é interrompida: o pedido fecha pelo que ficou no disco e nada segue "gerando"
+        with B.travado(slug):
+            prontas, custo = 0, 0.0
+            for i in imagens:
+                img = B.ler_no(slug, i)
+                if img.pop('gerando', None):
+                    img['erro'] = 'A geração foi interrompida.'
+                    B.gravar_no(slug, img)
+                prontas += bool(img.get('arquivo'))
+                custo += img.get('custo') or 0
+            pedido = B.ler_no(slug, pid)
+            pedido['custo'] = round((pedido.get('custo') or 0) + custo, 4)
+            pedido['status'] = 'concluido' if prontas else 'erro'
+            if not prontas:
+                pedido['erro'] = 'Nenhuma imagem foi gerada (veja o erro nas imagens).'
+            pedido['concluido_em'] = B.agora()
+            B.gravar_no(slug, pedido)
+    print(f'{pid}: {prontas}/{len(imagens)} imagens · ${custo:.3f} · {", ".join(imagens)}')
+    sys.exit(0 if prontas else 1)
 
 
 if __name__ == '__main__':
