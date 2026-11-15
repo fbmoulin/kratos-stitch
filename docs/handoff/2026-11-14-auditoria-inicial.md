@@ -246,3 +246,20 @@ Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 6) e docs/specs
 ```
 Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 7) e docs/pesquisa/2026-11-15-itens-abertos.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -3, python3 -m unittest discover -s tests, gh run list -R fbmoulin/kratos-stitch --limit 2). Branch correcoes-auditoria, remote kratos; nunca enviar para origin; geração real só com o meu ok. Implemente o que eu aprovar da pesquisa (itens 2, 3 e 4), com teste antes, e trate o que eu relatar do uso do app.
 ```
+
+---
+
+# Atualização 8 (2026-11-15) — itens 2, 3 e 4 da pesquisa implementados; rascunho de PR
+
+- Entradas de rascunho: o lote da lixeira guarda `rascunhos.json` e o restaurar reaplica na ordem (`9bbc189`, testes `EntradasDeRascunho`).
+- Vídeo: `sondar()` (ffprobe) grava as dimensões reais no nó e `tirar_audio()` remove a trilha sem recodificar (`bc21b34`, testes `VideoBaixado`). Conferido numa cópia do arquivo real do OpenRouter: 736×400 com áudio → 736×400 sem áudio, duração 2,04 s igual, 347 708 → 286 845 bytes.
+- `python3 -m unittest discover -s tests` → 58, OK. `ruff check ferramentas` → 21 (linha de base). CI `bc21b34`: sucesso, 58 testes rodados no Linux (o ffmpeg é instalado no job).
+- Não verificado com geração real: um vídeo novo saindo já sem áudio e com as dimensões certas (o `TES-006` existente não foi alterado).
+- Licença: decisão do usuário de manter privado. Rascunho de issue e de 4 PRs para o autor em `rascunhos/PR-para-o-autor.md`, fora do git (`.git/info/exclude`); nada foi enviado ao repositório dele e nenhuma branch foi criada.
+- Feito sem agentes nem skills, a pedido.
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 8) em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -3, python3 -m unittest discover -s tests, gh run list -R fbmoulin/kratos-stitch --limit 2, curl localhost:8730/api/projetos). Branch correcoes-auditoria, remote kratos; nunca enviar para origin; geração real só com o meu ok. O rascunho do PR está em rascunhos/PR-para-o-autor.md (fora do git). Trate o que eu relatar do uso do app.
+```
