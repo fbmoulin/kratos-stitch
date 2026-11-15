@@ -12,6 +12,7 @@ import contextlib
 import http.client
 import io
 import json
+import shutil
 import sys
 import tempfile
 import threading
@@ -41,6 +42,14 @@ class Isolado(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         B.PROJETOS.mkdir()
+        if not shutil.which('sips'):   # fora do macOS (o CI roda em Linux): miniatura e medidas sem o sips
+            def miniatura(origem, destino, lado=640):
+                destino.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(origem, destino)
+            for nome, valor in (('miniatura', miniatura), ('medidas', lambda arquivo: (1, 1))):
+                p = mock.patch.object(B, nome, valor)
+                p.start()
+                self.addCleanup(p.stop)
 
 
 class Prefixo(Isolado):
