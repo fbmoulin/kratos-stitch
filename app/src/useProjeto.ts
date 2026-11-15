@@ -9,12 +9,17 @@ export function useProjeto(slug: string) {
   const [estado, setEstado] = useState<EstadoProjeto | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const rev = useRef<string | undefined>(undefined)
+  // o erro que a própria leitura mostrou (rede fora do ar): só esse some sozinho, na próxima leitura que der certo;
+  // o de uma ação (o servidor recusou) fica até o clique no toast
+  const erroLeitura = useRef<string | null>(null)
   const locais = useRef(new Map<string, { campos: Partial<No>; ate: number }>())
 
   const carregar = useCallback(
     async (forcar = false) => {
       try {
         const r = await api.estado(slug, forcar ? undefined : rev.current)
+        const m = erroLeitura.current
+        if (m !== null) { erroLeitura.current = null; setErro((e) => (e === m ? null : e)) }
         if (r.igual) return
         rev.current = r.rev
         const agora = Date.now()
@@ -25,9 +30,9 @@ export function useProjeto(slug: string) {
         })
         for (const [id, l] of locais.current) if (id.includes('/') && 'desloc' in l.campos) r.avancos = comDesloc(r.avancos, id, l.campos.desloc ?? null)
         setEstado(r)
-        setErro(null)
       } catch (e) {
-        setErro((e as Error).message)
+        erroLeitura.current = (e as Error).message
+        setErro(erroLeitura.current)
       }
     },
     [slug],
@@ -41,44 +46,49 @@ export function useProjeto(slug: string) {
     return () => clearInterval(t)
   }, [carregar])
 
-  /** Muda um nó localmente agora e no servidor em seguida. */
+  /** Muda um nó localmente agora e no servidor em seguida. Devolve se o servidor aceitou. */
   const mudar = useCallback(
     async (id: string, campos: Partial<No>) => {
       locais.current.set(id, { campos: { ...(locais.current.get(id)?.campos || {}), ...campos }, ate: Date.now() + 4000 })
       // uma versão de HTML (<IMG>/<vN>) não é um arquivo de nó: só o desloc dela vale, e vai para o impl.json
       const [img, versao] = id.split('/')
       if (versao) {
-        if (!('desloc' in campos)) return
+        if (!('desloc' in campos)) return true
         const d = campos.desloc ?? null
         setEstado((e) => (e ? { ...e, avancos: comDesloc(e.avancos, id, d) } : e))
+        let ok = true
         try {
           await api.deslocImpl(slug, img, versao, d)
         } catch (e) {
           locais.current.delete(id)
           setErro((e as Error).message)
+          ok = false
         }
         carregar(true)
-        return
+        return ok
       }
       setEstado((e) => (e ? { ...e, nos: e.nos.map((n) => (n.id === id ? { ...n, ...campos } : n)) } : e))
+      let ok = true
       try {
         await api.mudarNo(slug, id, campos)
       } catch (e) {
         locais.current.delete(id)
         setErro((e as Error).message)
+        ok = false
       }
       carregar(true)
+      return ok
     },
     [slug, carregar],
   )
 
   const posicoes = useCallback(
     async (mapa: Record<string, { x: number; y: number }>) => {
-      if (!Object.keys(mapa).length) return
+      if (!Object.keys(mapa).length) return true
       for (const [id, pos] of Object.entries(mapa))
         locais.current.set(id, { campos: { ...(locais.current.get(id)?.campos || {}), pos }, ate: Date.now() + 4000 })
       setEstado((e) => (e ? { ...e, nos: e.nos.map((n) => (mapa[n.id] ? { ...n, pos: mapa[n.id] } : n)) } : e))
-      await api.posicoes(slug, mapa).catch((e) => setErro(e.message))
+      return api.posicoes(slug, mapa).then(() => true).catch((e) => { setErro(e.message); return false })
     },
     [slug],
   )

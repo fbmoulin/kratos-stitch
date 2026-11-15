@@ -8,7 +8,7 @@ export type Ctx = {
   porId: Map<string, No>
   arv: Arvore
   alternar: (id: string) => void
-  mudar: (id: string, campos: Partial<No>) => Promise<void>
+  mudar: (id: string, campos: Partial<No>) => Promise<unknown>
   apagar: (id: string) => Promise<void>
   acao: <T>(fn: () => Promise<T>) => Promise<T | undefined>
   abrir: (id: string) => void

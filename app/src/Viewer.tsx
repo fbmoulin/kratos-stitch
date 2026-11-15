@@ -84,7 +84,7 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
 
   const enviarComentario = async () => {
     if (!texto.trim()) return
-    await acao(() => api.comentar(slug, no.id, texto.trim(), pin))
+    if ((await acao(() => api.comentar(slug, no.id, texto.trim(), pin))) === undefined) return  // falhou: o rascunho fica
     setTexto('')
     setPin(null)
   }

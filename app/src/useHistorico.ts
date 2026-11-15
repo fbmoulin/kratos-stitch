@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { api, type No, type Pos } from './api'
 
+// um passo que resolve `false` falhou (o servidor recusou): fica onde estava na pilha
 type Passo = { desfazer: () => Promise<unknown>; refazer: () => Promise<unknown> }
 
 // o valor "vazio" de cada campo, para desfazer uma mudança num nó que ainda não tinha o campo
@@ -15,13 +16,14 @@ const FORA = new Set<keyof No>(['intencao'])
 export function useHistorico(opts: {
   slug: string
   porId: () => Map<string, No>
-  mudar: (id: string, campos: Partial<No>) => Promise<void>
-  posicoes: (mapa: Record<string, Pos>) => Promise<void>
+  mudar: (id: string, campos: Partial<No>) => Promise<boolean>
+  posicoes: (mapa: Record<string, Pos>) => Promise<boolean>
   acao: <T>(fn: () => Promise<T>) => Promise<T | undefined>
 }) {
   const { slug, porId, mudar, posicoes, acao } = opts
   const pilhas = useRef<{ desfazer: Passo[]; refazer: Passo[] }>({ desfazer: [], refazer: [] })
   const lote = useRef<Passo[] | null>(null)
+  const fila = useRef<Promise<unknown>>(Promise.resolve())  // desfazer/refazer rodam um de cada vez
 
   const registrar = useCallback((p: Passo) => {
     if (lote.current) { lote.current.push(p); return }
@@ -38,9 +40,11 @@ export function useHistorico(opts: {
     } finally {
       const passos = lote.current || []
       lote.current = anterior
+      // `feitos`: quantos passos do lote estão aplicados; se um falha no meio, a próxima tentativa continua dali
+      let feitos = passos.length
       if (passos.length) registrar({
-        desfazer: async () => { for (const p of [...passos].reverse()) await p.desfazer() },
-        refazer: async () => { for (const p of passos) await p.refazer() },
+        desfazer: async () => { for (; feitos > 0; feitos--) if ((await passos[feitos - 1].desfazer()) === false) return false },
+        refazer: async () => { for (; feitos < passos.length; feitos++) if ((await passos[feitos].refazer()) === false) return false },
       })
     }
   }, [registrar])
@@ -70,34 +74,36 @@ export function useHistorico(opts: {
   const apagarH = useCallback(async (id: string) => {
     const r = await acao(() => api.apagarNo(slug, id))
     if (r) registrar({
-      desfazer: () => acao(() => api.restaurarNo(slug, id)),
-      refazer: () => acao(() => api.apagarNo(slug, id)),
+      desfazer: async () => (await acao(() => api.restaurarNo(slug, id))) !== undefined,
+      refazer: async () => (await acao(() => api.apagarNo(slug, id))) !== undefined,
     })
   }, [slug, acao, registrar])
 
   /** Um nó recém-criado: desfazer o apaga (vai para a lixeira), refazer o restaura. */
   const criado = useCallback((id: string) => {
     registrar({
-      desfazer: () => acao(() => api.apagarNo(slug, id)),
-      refazer: () => acao(() => api.restaurarNo(slug, id)),
+      desfazer: async () => (await acao(() => api.apagarNo(slug, id))) !== undefined,
+      refazer: async () => (await acao(() => api.restaurarNo(slug, id))) !== undefined,
     })
   }, [slug, acao, registrar])
 
-  const desfazer = useCallback(async () => {
-    const p = pilhas.current.desfazer.pop()
-    if (!p) return false
-    await p.desfazer()
-    pilhas.current.refazer.push(p)
-    return true
+  /** Roda o passo do topo de uma pilha: `null` = nada a fazer, `false` = falhou (o passo fica onde estava), `true` = feito. */
+  const andar = useCallback((de: 'desfazer' | 'refazer') => {
+    const r = fila.current.then(async () => {
+      const p = pilhas.current[de].at(-1)
+      if (!p) return null
+      if ((await p[de]().catch(() => false)) === false) return false
+      const i = pilhas.current[de].lastIndexOf(p)
+      if (i >= 0) pilhas.current[de].splice(i, 1)
+      pilhas.current[de === 'desfazer' ? 'refazer' : 'desfazer'].push(p)
+      return true
+    })
+    fila.current = r
+    return r
   }, [])
 
-  const refazer = useCallback(async () => {
-    const p = pilhas.current.refazer.pop()
-    if (!p) return false
-    await p.refazer()
-    pilhas.current.desfazer.push(p)
-    return true
-  }, [])
+  const desfazer = useCallback(() => andar('desfazer'), [andar])
+  const refazer = useCallback(() => andar('refazer'), [andar])
 
   return useMemo(
     () => ({ mudar: mudarH, posicoes: posicoesH, apagar: apagarH, criado, passo: registrar, emLote, desfazer, refazer }),

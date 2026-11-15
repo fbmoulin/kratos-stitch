@@ -246,10 +246,12 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
       return visiveis.map((no) => {
         const a = antes.get(no.id)
         const pos = arrastando.current.has(no.id) && a ? a.position : posicoesFinais[no.id]
-        return { id: no.id, type: no.tipo, position: pos, data: { no }, selected: a?.selected ?? false,
-          // a versão de HTML antiga (sem impl.json) não tem onde guardar a posição
-          // filtrado, a posição é provisória: arrastar não grava ajuste
-          draggable: filtrando || no.tipo !== 'site' || !!no.site?.trabalho }
+        // a versão de HTML antiga (sem impl.json) não tem onde guardar a posição
+        // filtrado, a posição é provisória: arrastar não grava ajuste
+        const draggable = filtrando || no.tipo !== 'site' || !!no.site?.trabalho
+        // o nó anterior é reaproveitado (o mesmo objeto, se nada mudou): leva o `measured` do React Flow, que assim não mede tudo de novo
+        if (a && a.data.no === no && a.type === no.tipo && a.draggable === draggable && a.position.x === pos.x && a.position.y === pos.y) return a
+        return { ...a, id: no.id, type: no.tipo, position: pos, data: { no }, selected: a?.selected ?? false, draggable }
       })
     })
   }, [visiveis, posicoesFinais, filtrando, soltou])
@@ -540,6 +542,8 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
     setAviso('Só o caminho até os pinados · ⌘Z desfaz')
   }, [nos, arv, estado?.vistas.pinados, emLote, mudar])
 
+  // com o Viewer ou um modal aberto, os atalhos do canvas não valem (o Viewer tem os dele)
+  const coberto = (!!visto && porId.has(visto)) || !!confirmar || spec || config
   // ⌘Z desfaz, ⌘⇧Z (ou ⌘Y) refaz — fora dos campos de texto, que têm o próprio desfazer
   useEffect(() => {
     const tecla = async (e: KeyboardEvent) => {
@@ -549,6 +553,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
       // ⌘+ / ⌘− dão zoom no canvas (em vez do zoom da página do navegador)
       if (k === '=' || k === '+') { e.preventDefault(); rf.zoomIn({ duration: 160 }); return }
       if (k === '-' || k === '_') { e.preventDefault(); rf.zoomOut({ duration: 160 }); return }
+      if (coberto) return
       if (k === 'a') { e.preventDefault(); irParaAprovados(); return }  // ⌘A: só pinados (em vez de selecionar a página)
       if (k === '1' || k === '2' || k === '3') { e.preventDefault(); recolherNivel(Number(k)); return }
       const refaz = (k === 'z' && e.shiftKey) || k === 'y'
@@ -556,11 +561,12 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
       e.preventDefault()
       soltarGuarda()
       const ok = await (refaz ? historico.refazer() : historico.desfazer())
+      if (ok === false) return  // falhou: o toast de erro já diz por quê
       setAviso(ok ? (refaz ? 'Refeito' : 'Desfeito') : refaz ? 'Nada para refazer' : 'Nada para desfazer')
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
-  }, [historico, irParaAprovados, recolherNivel, rf])
+  }, [historico, irParaAprovados, recolherNivel, rf, coberto])
 
   // ⌘ segurado: liga a camada de seleção (⌘ + arrastar = caixa; ⌘ + clique = põe/tira o nó da seleção)
   useEffect(() => {
@@ -584,7 +590,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (e.target instanceof Element && e.target.closest('textarea, input, select')) return
-      if (e.metaKey || e.ctrlKey || visto) return
+      if (e.metaKey || e.ctrlKey || coberto) return
       const k = e.key.toLowerCase()
       if ((k === '1' || k === '2' || k === '3') && !e.shiftKey && !e.altKey) { recolherNivel(Number(k)); return }
       else if (k === 'd' && soImagens.length) marcar(soImagens, 'descartada')
@@ -596,7 +602,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
-  }, [soImagens, imgsSel, marcar, novoPedido, pedidoVideo, visto, selecao, apagar, recolherNivel, limparSelecao])
+  }, [soImagens, imgsSel, marcar, novoPedido, pedidoVideo, coberto, selecao, apagar, recolherNivel, limparSelecao])
 
   // enquadrar pelas posições calculadas (o fitView do React Flow só enxerga nós já desenhados/medidos)
   const enquadrar = useCallback((ids?: string[], o: { min?: number; max?: number; dur?: number; folga?: number } = {}) => {
@@ -663,8 +669,9 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
       if (!compacto) {
         const ligar = async (v: boolean) => {
           setCompactoLocal(v)
-          await acao(() => api.mudarProjeto(slug, { compacto: v }))
+          const ok = (await acao(() => api.mudarProjeto(slug, { compacto: v }))) !== undefined
           setCompactoLocal(null)
+          return ok
         }
         passo({ desfazer: () => ligar(false), refazer: () => ligar(true) })
         await ligar(true)

@@ -12,11 +12,12 @@ const TIPOS = [
 
 export function Home() {
   const [lista, setLista] = useState<ResumoProjeto[] | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
   const [novo, setNovo] = useState(false)
   const [config, setConfig] = useState(false)
 
   useEffect(() => {
-    api.projetos().then(setLista).catch(() => setLista([]))
+    api.projetos().then(setLista).catch((e) => setErro((e as Error).message))
   }, [])
 
   // o projeto selecionado (clique) mostra, embaixo, as imagens dele em desenvolvimento; abrir = botão ou duplo clique
@@ -67,6 +68,7 @@ export function Home() {
       </header>
       {config && <Config fechar={() => setConfig(false)} />}
       <h2 className="home-secao">Projetos</h2>
+      {erro && <p className="erro-texto">{erro}</p>}
       <section className="grade">
         <button type="button" className="cartao novo" onClick={(e) => { e.stopPropagation(); setNovo(true) }} title="Novo projeto">
           <Plus size={28} strokeWidth={1.5} />
