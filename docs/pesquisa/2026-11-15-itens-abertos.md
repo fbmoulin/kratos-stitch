@@ -176,3 +176,41 @@ se um teste pago mostrar que o parâmetro é aceito nos modelos `null` (economiz
 - Se enviar um clone a um repositório privado cabe em "as permitted by GitHub's functionality".
 - Licença implícita pelo README e o alcance do art. 6º, IV: não foi pesquisada jurisprudência.
 - Os textos das leis foram lidos em resumo com citações curtas; conferir a redação literal antes de citar formalmente.
+
+---
+
+## Correções a este documento (revisão de código, 2026-11-15)
+
+Uma revisão independente apontou afirmações erradas ou incompletas acima. O que foi implementado já leva isso em conta.
+
+**Item 1.** A recomendação dizia para manter privado e, ao mesmo tempo, endossava a opção 3 (fork + PR). Um fork é
+público: mandar as correções antes da autorização do autor é justamente o que a opção 4 classifica como risco alto.
+A ordem certa é a opção 2 primeiro, e a 3 só depois da resposta dele. O que existe hoje é um patch local em
+`rascunhos/`, fora do git.
+
+**Item 2.**
+- O alcance estava subestimado. Além da referência secundária, também ficavam entradas mortas em: pedidos com status
+  `erro` (que podem ser reenviados), entradas de página (`IMG/vN`, nunca removidas quando a imagem sai) e rascunhos
+  cuja única entrada é uma referência com posição própria.
+- A lista de quem lê `entradas` estava incompleta. Leem a primeira entrada pela posição, sem filtrar:
+  `ferramentas/base.py` (`avancos`, `p['entradas'][0]`) e `ferramentas/impl.py` (`cmd_iniciar`). Também leem:
+  `ferramentas/neo.py` (`ver_no`), `ferramentas/base.py` (`capa_de`), `app/src/Viewer.tsx` e `app/src/Trilho.tsx`.
+- `ferramentas/gerar_video.py` não era "tolerante": sem imagem de entrada ele saía com erro e deixava o pedido
+  "enviado". Corrigido: devolve o pedido como erro. O `enviar` passou a recusar pedido sem texto cujas entradas não
+  existem mais.
+- A regra de mescla recomendada (manifesto no lote) trocava a ordem quando dois lotes eram restaurados fora de ordem,
+  e perdia a entrada se o rascunho estivesse na lixeira na hora. A implementação final não usa manifesto: o rascunho
+  guarda a lista original em `entradas_antes`, e o restaurar reconstrói a partir dela (testes
+  `test_lotes_restaurados_fora_de_ordem_mantem_a_ordem_das_entradas` e
+  `test_rascunho_apagado_no_meio_nao_quebra_o_restaurar`).
+
+**Item 3.** Há um terceiro player: `ferramentas/pagina_videos.py` gera uma página de comparação com
+`<video controls muted>`, onde o usuário pode ligar o som. A retirada do áudio foi feita em `gerar_um`, que serve
+aos dois modos (pedido do app e pasta avulsa), então cobre essa página. O detalhe que faltava nas opções: o `ffmpeg`
+não regrava o arquivo no lugar; a implementação escreve um temporário e só troca se deu certo.
+
+**Item 4.** "O `ffprobe` vem com o `ffmpeg`" não vale para toda instalação. A implementação confere o `ffprobe` por
+conta própria e, sem ele, mantém as dimensões da imagem.
+
+**Conferido com geração real (autorizada):** pedido `TES-007` → vídeo `TES-008`, $0,05. O nó ficou com 736×400 (as do
+arquivo) e o arquivo tem uma faixa só, `h264,video`.
