@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="96" alt="Neo Stitch">
+<img src="docs/logo.svg" width="96" alt="Kratos Stitch">
 
-# Neo Stitch
+# Kratos Stitch
 
 **Esboce com imagens. Dê vida com vídeo. Entregue em HTML.**
 
@@ -23,7 +23,7 @@ do prompt à imagem, da imagem ao movimento, do movimento ao código.
 <br>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="O Neo Stitch em uso: a árvore de ideias, o enquadramento de uma família, o visualizador e a página de desenvolvimento com os vídeos de cada modelo" width="100%">
+  <img src="docs/demo.gif" alt="O Kratos Stitch em uso: a árvore de ideias, o enquadramento de uma família, o visualizador e a página de desenvolvimento com os vídeos de cada modelo" width="100%">
 </p>
 
 <p align="center"><sub>A árvore de ideias do JarvisOS → enquadrar uma família com o botão do meio → o visualizador com as irmãs → a vista de uma imagem com um vídeo por modelo.</sub></p>
@@ -32,7 +32,7 @@ do prompt à imagem, da imagem ao movimento, do movimento ao código.
 
 ## Por quê
 
-Ferramentas como o Stitch geram telas direto em código, e o código puxa tudo para o genérico. Modelos de imagem fazem o contrário: inventam interfaces que nenhum template entrega. O Neo Stitch aposta nisso. **Primeiro a imagem, depois o movimento, por último o HTML** — e você só gasta código no que já foi aprovado.
+Ferramentas como o Stitch geram telas direto em código, e o código puxa tudo para o genérico. Modelos de imagem fazem o contrário: inventam interfaces que nenhum template entrega. O Kratos Stitch aposta nisso. **Primeiro a imagem, depois o movimento, por último o HTML** — e você só gasta código no que já foi aprovado.
 
 Cada ideia vira um nó num canvas infinito. Você pede, o Claude Code gera, você marca as melhores e pede de novo a partir delas. O resultado é uma árvore viva de exploração, com a linhagem de cada tela à vista: de onde veio, o que saiu dela, quanto custou.
 
@@ -129,8 +129,8 @@ Testamos os 25 modelos de image-to-video do OpenRouter em quatro telas. O que im
 **Requisitos:** macOS (as miniaturas usam o `sips`), [uv](https://docs.astral.sh/uv/) com Python 3.11+, Node 20+, [Claude Code](https://claude.com/claude-code), uma chave do [OpenRouter](https://openrouter.ai/), `ffmpeg` (para as capas dos vídeos) e o Google Chrome em `/Applications` (o servidor tira com ele os prints das páginas HTML; sem o Chrome, o cartão mostra a imagem de origem).
 
 ```bash
-git clone https://github.com/rtadewald/neo-stitch.git
-cd neo-stitch
+git clone https://github.com/fbmoulin/kratos-stitch.git
+cd kratos-stitch
 
 # o app (React + React Flow)
 npm --prefix app install
@@ -227,5 +227,5 @@ Decisões e escopo completos em [specs.md](specs.md).
 <br>
 
 <div align="center">
-<sub>Feito por <a href="https://github.com/rtadewald">Rodrigo Tadewald</a> com <a href="https://claude.com/claude-code">Claude Code</a> · imagens e vídeos via <a href="https://openrouter.ai/">OpenRouter</a></sub>
+<sub>Derivado do <a href="https://github.com/rtadewald/neo-stitch">Neo Stitch</a>, feito por <a href="https://github.com/rtadewald">Rodrigo Tadewald</a> com <a href="https://claude.com/claude-code">Claude Code</a> · imagens e vídeos via <a href="https://openrouter.ai/">OpenRouter</a></sub>
 </div>

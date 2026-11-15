@@ -153,3 +153,35 @@ Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projeto
 ```
 Leia docs/handoff/2026-11-14-auditoria-inicial.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -6, python3 -m unittest discover -s tests, curl localhost:8730/api/projetos, git ls-remote kratos). Branch correcoes-auditoria, remote kratos (privado); nunca enviar para origin. Geração real só com o meu ok. Próximos: desempenho do canvas (contexto/memo dos nós) e o preço do flash em MODELOS.
 ```
+
+---
+
+# Atualização 4 (2026-11-15) — nome no README, análise do que está em aberto e plano
+
+## Feito
+
+- `README.md`: o projeto passa a se chamar Kratos Stitch, com o clone apontando para `fbmoulin/kratos-stitch` e o rodapé creditando o Neo Stitch de Rodrigo Tadewald. Nomes de arquivos e da skill (`neo.py`, `.claude/skills/neo-stitch`) não mudaram.
+
+## Medido
+
+- Canvas com 542 nós (cópia isolada, Chrome): no máximo 38 nós montados (o React Flow só desenha o visível); pior quadro 14 ms e nenhuma tarefa longa (>50 ms) em: poll com mudança, `D` num nó, ⌘1 (30 PATCHes) e ⌘Z. Carga da página: 299 ms.
+- Preço das imagens no OpenRouter é por token de saída (`google/gemini-3.1-flash-image`: $0,00006/token), não por imagem: a cobrança de $0,067 bate com ~1.120 tokens. A tabela fixa `MODELOS` é só aproximação.
+- `emLote`: 8 usos; só 2 esperam o servidor em série (apagar vários, `Canvas.tsx:144`; distribuir, `Canvas.tsx:668`) e podem capturar ações alheias.
+
+## Plano (nada implementado)
+
+1. Pedido preso que se cura sozinho: o gerador grava o PID no pedido; guarda e servidor tratam `trabalhando` com PID morto como interrompido. Mais um handler de SIGTERM. Cobre SIGKILL e queda da máquina.
+2. Estimativa de custo pelo histórico: mediana do custo real do modelo no projeto, com a tabela como reserva; corrigir o `flash`.
+3. Colar com o visualizador aberto: usar a mesma trava `coberto`.
+4. CI no `kratos-stitch`: testes, build e lint a cada push.
+5. Rotas em lote (apagar vários, mudar vários): um passo de desfazer, uma recarga; resolve o `emLote` e o lote meio desfeito.
+6. Teste real de vídeo (precisa de ok: ~$0,19 com o modelo mais barato).
+
+Descartados com evidência: dividir o contexto/memo dos nós e dividir o bundle (sem ganho medido).
+Decisão do usuário: o repo de origem não tem licença.
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 4) em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -3, python3 -m unittest discover -s tests, git ls-remote kratos). Branch correcoes-auditoria, remote kratos; nunca enviar para origin. Implemente o plano na ordem 1, 2, 3, com teste antes de cada um; geração real só com o meu ok.
+```
