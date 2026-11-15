@@ -232,3 +232,17 @@ Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 4) em /Users/fe
 ```
 Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 6) e docs/specs/2026-11-15-robustez-fase-2.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -5, python3 -m unittest discover -s tests, gh run list -R fbmoulin/kratos-stitch --limit 3, curl localhost:8730/api/projetos). Branch correcoes-auditoria, remote kratos; nunca enviar para origin; geração real só com o meu ok. Próximos: testar no app apagar vários nós com ⌘Z; devolver as entradas dos rascunhos ao restaurar.
 ```
+
+---
+
+# Atualização 7 (2026-11-15) — pendências verificadas e pesquisa dos itens em aberto
+
+- Verificado: apagar vários nós pelo app (2 cartões, `POST /nos/apagar` único, ⌘Z/⌘⇧Z/⌘Z corretos); `gerar_video.py` com SIGTERM (teste novo); o varredor soltando órfãos (teste novo, com mutação). `python3 -m unittest discover -s tests` → 48, OK.
+- Pesquisa com fontes e opções: `docs/pesquisa/2026-11-15-itens-abertos.md`. Recomendações: licença → pedir ao autor e manter privado enquanto isso; entradas de rascunho → manifesto no lote da lixeira; áudio → `ffmpeg -an -c copy` depois do download; dimensões → `ffprobe` depois do download.
+- Nada da pesquisa foi implementado. O usuário vai testar o app na prática.
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-14-auditoria-inicial.md (Atualização 7) e docs/pesquisa/2026-11-15-itens-abertos.md em /Users/felipemoulin/Projetos/neo-stitch e re-meça (git status, git log -3, python3 -m unittest discover -s tests, gh run list -R fbmoulin/kratos-stitch --limit 2). Branch correcoes-auditoria, remote kratos; nunca enviar para origin; geração real só com o meu ok. Implemente o que eu aprovar da pesquisa (itens 2, 3 e 4), com teste antes, e trate o que eu relatar do uso do app.
+```
