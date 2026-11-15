@@ -636,20 +636,53 @@ def para_lixeira(slug: str, id_: str, junto: list[str] | None = None) -> None:
                 shutil.move(str(f), destino / sub / f.name)
 
 
+# ---------- as entradas de um rascunho e a lixeira ----------
+# Apagar um nó o tira das `entradas` dos rascunhos que ficam. Para o desfazer devolvê-lo ao lugar (a 1ª entrada é o pai do
+# pedido), o rascunho guarda em `entradas_antes` a lista completa: as entradas de agora + as que estão na lixeira, na ordem.
+# Quem mantém: servidor.apagar (ao tirar), servidor.campos_validos (quando o usuário mexe nas entradas pelo app) e
+# devolver_entradas (depois de um restaurar). Sem nada na lixeira, o campo não existe.
+
+def entrada_existe(e, ids: set) -> bool:
+    """Uma página (<IMG>/<vN>) não é nó e nunca vai para a lixeira: conta como existente."""
+    return isinstance(e, str) and ('/' in e or e in ids)
+
+
+def mesclar_entradas(antes: list, atuais: list, ids: set) -> list:
+    """A lista completa nova: as entradas de agora (`atuais`) + as de `antes` que estão na lixeira, cada uma de volta ao seu
+    lugar: depois da vizinha anterior que ainda está na lista; sem ela, antes da vizinha seguinte; sem nenhuma, no fim (ela
+    não passa à frente de quem o usuário pôs em 1º depois). O que existe e saiu de `atuais` foi o usuário que tirou: não volta."""
+    out = list(atuais)
+    for i, e in enumerate(antes):
+        if e in out or entrada_existe(e, ids):
+            continue
+        anterior = next((p for p in reversed(antes[:i]) if p in out), None)
+        seguinte = next((p for p in antes[i + 1:] if p in out), None)
+        if anterior is not None:
+            out.insert(out.index(anterior) + 1, e)
+        elif seguinte is not None:
+            out.insert(out.index(seguinte), e)
+        else:
+            out.append(e)
+    return out
+
+
 def devolver_entradas(slug: str) -> None:
-    """Chame com a trava. Um rascunho que perdeu entradas para a lixeira guarda a lista de antes em `entradas_antes`
-    (servidor.apagar). Depois de um restaurar, o que voltou entra de novo no lugar que tinha (a 1ª entrada é o pai), em
-    qualquer ordem em que os lotes voltem; o que o usuário acrescentou no meio fica no fim. Com tudo de volta, a marca some.
-    Pedido já enviado não é mexido."""
+    """Chame com a trava, depois de um restaurar. O que voltou da lixeira entra de novo nas entradas dos rascunhos que o
+    esperavam, no lugar que tinha, em qualquer ordem em que os lotes voltem. Com tudo de volta, `entradas_antes` some.
+    Só regrava o rascunho que mudou; pedido já enviado não é mexido."""
     todos = nos(slug)
-    existe = {n['id'] for n in todos}
+    ids = {n['id'] for n in todos}
     for no in todos:
         antes = no.get('entradas_antes')
         if not antes or no.get('status') != 'rascunho':
             continue
         atuais = no.get('entradas') or []
-        no['entradas'] = [e for e in antes if e in atuais or e in existe] + [e for e in atuais if e not in antes]
-        if all(e in existe for e in antes):
+        completa = antes + [e for e in atuais if e not in antes]   # o que entrou sem passar pelo app fica no fim
+        novas = [e for e in completa if entrada_existe(e, ids)]
+        if novas == atuais and novas != completa:
+            continue   # nada do que este rascunho espera voltou
+        no['entradas'] = novas
+        if novas == completa:
             del no['entradas_antes']
         gravar_no(slug, no)
 

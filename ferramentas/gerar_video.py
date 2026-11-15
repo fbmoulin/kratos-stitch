@@ -83,13 +83,15 @@ def sondar(arq: Path) -> dict | None:
     o arquivo não for um vídeo."""
     if not shutil.which('ffprobe'):
         return None
-    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,width,height', '-of', 'json', str(arq)],
-                       capture_output=True, text=True, check=False)
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,width,height:stream_disposition=attached_pic',
+                        '-of', 'json', str(arq)], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=60)
     try:
         faixas = json.loads(r.stdout).get('streams') or []
     except ValueError:
         return None
-    video = next((f for f in faixas if f.get('codec_type') == 'video' and f.get('width') and f.get('height')), None)
+    # a capa embutida também é uma faixa "de vídeo" (mjpeg), às vezes de outro tamanho: não é ela
+    video = next((f for f in faixas if f.get('codec_type') == 'video' and f.get('width') and f.get('height')
+                  and not (f.get('disposition') or {}).get('attached_pic')), None)
     if not video:
         return None
     return {'largura': video['width'], 'altura': video['height'], 'audio': any(f.get('codec_type') == 'audio' for f in faixas)}
@@ -101,10 +103,12 @@ def tirar_audio(arq: Path) -> None:
     if not shutil.which('ffmpeg'):
         return
     tmp = arq.with_suffix('.mudo.mp4')
-    r = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(arq), '-an', '-c', 'copy', str(tmp)], capture_output=True, check=False)
-    if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
-        os.replace(tmp, arq)
-    else:
+    try:
+        r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', str(arq), '-an', '-c', 'copy', str(tmp)],
+                           capture_output=True, check=False, timeout=120)
+        if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
+            os.replace(tmp, arq)
+    finally:
         tmp.unlink(missing_ok=True)
 
 
@@ -137,10 +141,13 @@ def gerar_um(p: dict, prompt: str, url_img: str, proporcao: str, key: str, desti
         else:
             destino.write_bytes(pedir('GET', f'/videos/{job["id"]}/content?index=0', key, bruto=True))
             r['arquivo'] = destino.name
-            if info := sondar(destino):
-                r['largura'], r['altura'] = info['largura'], info['altura']
-                if info['audio']:
-                    tirar_audio(destino)
+            try:   # o vídeo já está no disco (e pago): medir e tirar o áudio não podem derrubá-lo
+                if info := sondar(destino):
+                    r['largura'], r['altura'] = info['largura'], info['altura']
+                    if info['audio']:
+                        tirar_audio(destino)
+            except (OSError, subprocess.SubprocessError):
+                pass
             if capa and shutil.which('ffmpeg'):
                 meio = max(0.5, (p['duracao'] or 6) / 2)
                 subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', str(meio), '-i', str(destino), '-frames:v', '1', '-vf', 'scale=640:-2',
@@ -222,7 +229,7 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
             v = B.ler_json(B.caminho_no(slug, vid))
             if v:   # o usuário pode ter apagado o placeholder no meio
                 v.pop('gerando', None)
-                if r['status'] == 'completed':
+                if r['status'] == 'completed' and r.get('arquivo') and (pasta / 'videos' / f'{vid}.mp4').exists():
                     v.pop('erro', None)
                     v.update(arquivo=f'videos/{vid}.mp4', thumb=f'thumbs/{vid}.jpg' if r.get('capa') else None, custo=r.get('custo'), segundos=r['segundos'])
                     if r.get('largura') and r.get('altura'):   # as do arquivo; sem o ffprobe, ficam as da imagem de origem

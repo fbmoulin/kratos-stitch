@@ -252,7 +252,7 @@ export const PedidoNode = memo(function PedidoNode(props: NodeProps<NoRF>) {
 
 function PedidoCheio({ id, data, selected }: NodeProps<NoRF>) {
   const { no } = data
-  const { estado, mudar, apagar, enviar, focar, limparFoco } = useCanvas()
+  const { estado, porId, mudar, apagar, enviar, focar, limparFoco } = useCanvas()
   const rascunho = no.status === 'rascunho'
   const [texto, setTexto] = useState(no.intencao || '')
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -284,8 +284,9 @@ function PedidoCheio({ id, data, selected }: NodeProps<NoRF>) {
     await enviar(no.id)
   }
   const video = no.midia === 'video'
-  const podeEnviar = video ? !!(no.modelos || []).length && !!(no.entradas || []).length
-    : !!(texto.trim() || (no.entradas || []).length || (no.variacoes || []).length)
+  const vivas = (no.entradas || []).filter((e) => porId.has(e))  // o servidor só conta as entradas que ainda existem
+  const podeEnviar = video ? !!(no.modelos || []).length && !!vivas.length
+    : !!(texto.trim() || vivas.length || (no.variacoes || []).length)
   const modelos = Object.entries(estado.modelos).map(([v, m]) => ({ v, r: m.nome }))
   const qtd = no.quantidade || 3
   const variacoes = no.variacoes || []

@@ -387,6 +387,76 @@ class EntradasDeRascunho(Api):
         self.restaurar(a['p_ast'])
         self.assertEqual(self.entradas(), [a['img'], a['ast'], a['vid']])
 
+    def patch(self, entradas):
+        self.assertEqual(self.pedir('PATCH', f'{self.url}/{self.rasc}', {'entradas': entradas})[0], 200)
+
+    def test_segundo_apagar_tambem_e_desfeito(self):
+        a = self.a   # apaga o asset, liga outra imagem pelo app, apaga essa e desfaz: ela tem de voltar
+        with B.travado(self.slug):
+            p = B.novo_no(self.slug, 'pedido', tela=a['tela'], status='concluido')['id']
+            z = B.novo_no(self.slug, 'imagem', pedido=p)['id']
+        self.apagar(a['p_ast'])
+        self.patch([a['img'], self.ref, a['vid'], z])
+        self.apagar(p)
+        self.assertEqual(self.entradas(), [a['img'], self.ref, a['vid']])
+        self.restaurar(p)
+        self.assertEqual(self.entradas(), [a['img'], self.ref, a['vid'], z])
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], a['ast'], self.ref, a['vid'], z])
+
+    def test_desfazer_em_pilha_nao_troca_o_pai(self):
+        a = self.a   # [img, ast]: apaga o asset, tira a imagem, desfaz a retirada, desfaz o apagar → a imagem segue em 1º
+        self.patch([a['img'], a['ast']])
+        self.apagar(a['p_ast'])
+        self.patch([])
+        self.patch([a['img']])
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], a['ast']])
+
+    def test_trocar_a_origem_com_uma_entrada_na_lixeira(self):
+        a = self.a   # [img, ast]: com o asset na lixeira, troca a imagem pelo vídeo; o asset volta depois dele, não antes
+        self.patch([a['img'], a['ast']])
+        self.apagar(a['p_ast'])
+        self.patch([self.ref])
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [self.ref, a['ast']])
+
+    def test_quem_era_o_primeiro_volta_a_ser_o_primeiro(self):
+        a = self.a   # [ref, img]: a referência (com posição) sai e volta; continua em 1º mesmo com algo acrescentado no meio
+        self.patch([self.ref, a['img']])
+        self.apagar(self.ref)
+        self.patch([a['img'], a['ast']])
+        self.restaurar(self.ref)
+        self.assertEqual(self.entradas(), [self.ref, a['img'], a['ast']])
+
+    def test_com_pagina_nas_entradas_a_marca_some(self):
+        a = self.a
+        pagina = pagina_com_print(self.slug, a['img'])
+        self.patch([a['img'], pagina, a['ast']])
+        self.apagar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], pagina])
+        self.restaurar(a['p_ast'])
+        self.assertEqual(self.entradas(), [a['img'], pagina, a['ast']])
+        self.assertNotIn('entradas_antes', B.ler_no(self.slug, self.rasc))
+
+    def test_restaurar_nao_regrava_rascunho_que_nao_mudou(self):
+        a = self.a
+        with B.travado(self.slug):   # outro rascunho, que espera a referência voltar
+            outro = B.novo_no(self.slug, 'pedido', tela=a['tela'], entradas=[a['img'], self.ref])['id']
+        self.apagar(self.ref)
+        self.apagar(a['p_ast'])
+        arq = B.caminho_no(self.slug, outro)
+        antes = (arq.stat().st_ino, arq.stat().st_mtime_ns)   # gravar_json troca o arquivo: o inode muda
+        self.restaurar(a['p_ast'])   # não tem nada a ver com o outro rascunho
+        self.assertEqual((arq.stat().st_ino, arq.stat().st_mtime_ns), antes)
+
+    def test_enviar_tira_a_marca(self):
+        a = self.a
+        self.apagar(a['p_ast'])
+        self.assertIn('entradas_antes', B.ler_no(self.slug, self.rasc))
+        self.assertEqual(self.pedir('POST', f'{self.url}/{self.rasc}/enviar')[0], 200)
+        self.assertNotIn('entradas_antes', B.ler_no(self.slug, self.rasc))
+
     def test_refazer_e_desfazer_de_novo(self):
         a = self.a
         for _ in range(2):
@@ -419,10 +489,24 @@ class EnviarSemEntradaViva(Api):
         for campos in ({'entradas': ['NAO-999'], 'intencao': 'mais neon'}, {'entradas': ['NAO-999', self.a['img']]}):
             self.assertEqual(self.pedir('POST', f'{self.url}/{self.pedido(**campos)}/enviar')[0], 200, campos)
 
+    def test_pedido_de_video_sem_imagem_viva_nao_e_enviado(self):
+        with mock.patch.object(B, 'modelos_video', lambda todos=False: {'m/x': {'nome': 'X'}}):
+            for campos in ({'entradas': ['NAO-999'], 'intencao': 'gira'}, {'entradas': [], 'intencao': 'gira'}):
+                pid = self.pedido(midia='video', modelos=['m/x'], **campos)
+                self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/enviar')[0], 422, campos)
+                self.assertEqual(B.ler_no(self.slug, pid)['status'], 'rascunho')
+            pid = self.pedido(midia='video', modelos=['m/x'], entradas=[self.a['img']])
+            self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/enviar')[0], 200)
+
     def test_video_sem_imagem_de_entrada_devolve_o_pedido(self):
         import gerar_video
         pid = self.pedido(midia='video', modelos=['m/x'], entradas=['NAO-999'], status='trabalhando')
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+
+        def rede(*a, **k):
+            raise AssertionError('chegou à chave ou à rede')
+        with mock.patch.object(gerar_video, 'chave', rede), mock.patch.object(gerar_video, 'catalogo_api', rede), \
+                mock.patch.object(gerar_video, 'pedir', rede), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             gerar_video.por_pedido(pid, 'prompt', confirmado=False)
         ped = B.ler_no(self.slug, pid)
         self.assertEqual(ped['status'], 'erro')
@@ -721,15 +805,17 @@ class VideoBaixado(Isolado):
         self.assertEqual((r['status'], r['largura'], r['altura']), ('completed', 320, 180))
         self.assertEqual(self.gv.sondar(destino), {'largura': 320, 'altura': 180, 'audio': False})
         self.assertTrue(capa.exists())
-        self.assertEqual([f.name for f in self.raiz.glob('*.mp4')].count('saida.mp4'), 1)
         self.assertFalse(list(self.raiz.glob('*.mudo.mp4')))   # o temporário não fica
 
     def test_video_sem_audio_nao_e_regravado(self):
         import subprocess
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(self.mp4), '-an', '-c', 'copy', str(self.raiz / 'mudo.mp4')], check=True)
         self.mp4 = self.raiz / 'mudo.mp4'
-        with mock.patch.object(self.gv, 'tirar_audio', lambda arq: self.fail('regravou um vídeo que já era mudo')):
+        chamadas = []
+        with mock.patch.object(self.gv, 'tirar_audio', chamadas.append):
             r, destino, _ = self.baixar()
+        self.assertEqual(chamadas, [])   # não regrava um vídeo que já era mudo
+        self.assertNotIn('erro', r)
         self.assertEqual(destino.read_bytes(), self.mp4.read_bytes())
         self.assertEqual((r['largura'], r['altura']), (320, 180))
 
@@ -751,6 +837,49 @@ class VideoBaixado(Isolado):
         self.assertEqual(ruim.read_bytes(), b'isto nao e um mp4')
         self.assertFalse(list(self.raiz.glob('*.mudo.mp4')))
 
+    def test_a_capa_embutida_nao_e_o_video(self):
+        # o ffmpeg grava a capa por último num mp4, mas a ordem é do provedor: a saída do ffprobe é dada aqui à mão
+        import subprocess
+        faixas = [{'codec_type': 'video', 'width': 640, 'height': 360, 'disposition': {'attached_pic': 1}},
+                  {'codec_type': 'video', 'width': 320, 'height': 180, 'disposition': {'attached_pic': 0}},
+                  {'codec_type': 'audio'}]
+        saida = subprocess.CompletedProcess([], 0, stdout=json.dumps({'streams': faixas}), stderr='')
+        with mock.patch.object(self.gv.subprocess, 'run', lambda *a, **k: saida):
+            self.assertEqual(self.gv.sondar(self.mp4), {'largura': 320, 'altura': 180, 'audio': True})
+
+    def test_falha_ao_baixar_nao_vira_video_pronto(self):
+        slug = B.criar_projeto('Loja')['slug']
+        with B.travado(slug):
+            img = B.novo_no(slug, 'imagem', arquivo='images/x.png')['id']
+            (B.pasta(slug) / 'images' / 'x.png').write_bytes(base64.b64decode(PNG))
+            pid = B.novo_no(slug, 'pedido', tela='LOJ-002', midia='video', entradas=[img], modelos=['m/x'])['id']
+        catalogo = {'m/x': {'id': 'm/x', 'name': 'M: X', 'supported_durations': [4], 'supported_resolutions': ['720p']}}
+
+        def pedir(metodo, caminho, key, corpo=None, bruto=False, timeout=300):
+            if bruto:
+                raise RuntimeError('OpenRouter HTTP 502: caiu no download')
+            return {'id': 'job'} if metodo == 'POST' else {'status': 'completed', 'usage': {'cost': 0.05}}
+        with mock.patch.object(self.gv, 'chave', lambda: 'chave-de-teste'), mock.patch.object(self.gv, 'catalogo_api', lambda key: catalogo), \
+                mock.patch.object(self.gv, 'pedir', pedir), mock.patch.object(self.gv.time, 'sleep', lambda s: None), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as fim:
+            self.gv.por_pedido(pid, 'prompt', confirmado=False)
+        ped = B.ler_no(slug, pid)
+        video = B.ler_no(slug, ped['saidas'][0])
+        self.assertEqual((fim.exception.code, ped['status']), (1, 'erro'))
+        self.assertNotIn('arquivo', video)
+        self.assertIn('502', video['erro'])
+        self.assertEqual(video['custo'], 0.05)   # o que foi cobrado continua registrado
+
+    def test_falha_ao_medir_ou_tirar_o_audio_nao_perde_o_video(self):
+        def quebra(arq):
+            raise OSError('o ffprobe sumiu no meio')
+        with mock.patch.object(self.gv, 'sondar', quebra):
+            r, destino, capa = self.baixar()
+        self.assertEqual((r['status'], r['arquivo']), ('completed', 'saida.mp4'))
+        self.assertNotIn('erro', r)
+        self.assertEqual(destino.read_bytes(), self.mp4.read_bytes())
+        self.assertTrue(capa.exists())   # a capa ainda é tirada
+
     def test_o_no_do_video_fica_com_as_dimensoes_do_arquivo(self):
         slug = B.criar_projeto('Loja')['slug']
         with B.travado(slug):
@@ -760,6 +889,7 @@ class VideoBaixado(Isolado):
         catalogo = {'m/x': {'id': 'm/x', 'name': 'M: X', 'supported_durations': [4], 'supported_resolutions': ['720p']}}
 
         def gerar_um(p, prompt, url_img, proporcao, key, destino, capa):
+            destino.write_bytes(b'mp4')
             return dict(p, status='completed', custo=0.05, segundos=1.0, arquivo=destino.name, largura=736, altura=400)
         with mock.patch.object(self.gv, 'chave', lambda: 'chave-de-teste'), mock.patch.object(self.gv, 'catalogo_api', lambda key: catalogo), \
                 mock.patch.object(self.gv, 'gerar_um', gerar_um), mock.patch.object(B, 'medidas', lambda arq: (1376, 768)), \

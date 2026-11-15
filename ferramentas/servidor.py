@@ -368,8 +368,12 @@ def campos_validos(slug: str, no: dict, corpo: dict) -> dict:
     if 'entradas' in campos:
         existentes = {n['id']: n for n in B.nos(slug)}
         campos['entradas'] = entradas_validas(slug, existentes, campos['entradas'], tuple(no.get('entradas') or ()))
-        if no.get('entradas_antes'):   # o que o usuário tirou agora (e existe) não volta num restaurar; o que está na lixeira, sim
-            no['entradas_antes'] = [e for e in no['entradas_antes'] if e in campos['entradas'] or e not in existentes]
+        if no.get('entradas_antes'):   # há entradas na lixeira: a lista completa acompanha o que o usuário mudou
+            completa = B.mesclar_entradas(no['entradas_antes'], campos['entradas'], set(existentes))
+            if completa == campos['entradas']:
+                del no['entradas_antes']
+            else:
+                no['entradas_antes'] = completa
     return campos
 
 
@@ -433,7 +437,7 @@ def apagar(slug: str, ids: list[str]) -> dict:
             raise Erro('Há um pedido em andamento neste galho: espere o Claude terminar.')
         for n in todos:  # rascunhos que ficam tiram as entradas que saíram, e guardam a lista de antes para o restaurar
             if n['id'] not in sai and n.get('status') == 'rascunho' and sai & set(n.get('entradas') or []):
-                n.setdefault('entradas_antes', list(n['entradas']))
+                n['entradas_antes'] = B.mesclar_entradas(n.get('entradas_antes') or n['entradas'], n['entradas'], set(por_id))
                 n['entradas'] = [e for e in n['entradas'] if e not in sai]
                 B.gravar_no(slug, n)
         B.para_lixeira(slug, id_, junto)
@@ -461,6 +465,8 @@ def enviar(h, m, corpo):
             acao = 'video' if no.get('midia') == 'video' else 'gerar'
             if acao == 'video' and not no.get('modelos'):
                 raise Erro('Marque ao menos um modelo de vídeo.')
+            if acao == 'video' and not vivas:
+                raise Erro('O pedido de vídeo precisa de uma imagem de entrada que ainda exista.')
         elif no['tipo'] == 'brief':
             acao = 'direcoes'
         else:
@@ -469,6 +475,7 @@ def enviar(h, m, corpo):
         no['enviado_em'] = B.agora()
         no.pop('erro', None)
         no.pop('gerador', None)
+        no.pop('entradas_antes', None)   # enviado, as entradas travam: não há mais o que devolver
         B.gravar_no(slug, no)
     B.enfileirar(slug, id_, acao)
     return no
