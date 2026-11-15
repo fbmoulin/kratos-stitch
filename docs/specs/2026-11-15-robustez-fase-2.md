@@ -224,3 +224,24 @@ spec; onde houver conflito com o texto acima, vale o que está aqui.
 `python3 -m unittest discover -s tests` · `uvx ruff check ferramentas` (linha de base: 21 avisos) ·
 `npm --prefix app run build` · `npm --prefix app run lint` (linha de base: 9 avisos) · CI verde depois do item 4.
 Nenhuma geração paga é necessária.
+
+---
+
+## Resultado (2026-11-15)
+
+Os cinco itens estão implementados na ordem revista (4 → 1 → 2 → 3 → 5). `python3 -m unittest discover -s tests`: 46
+testes, OK (com e sem o `sips` no PATH). `ruff check ferramentas`: 21 avisos (linha de base). `oxlint`: 9 (linha de base).
+
+| Item | Critérios | Como foi verificado |
+|---|---|---|
+| 1 | 1 a 8 | testes `Orfaos` (inclui SIGTERM num subprocesso: sai com 143 e fecha o pedido em menos de 3 s) |
+| 2 | 1 a 4 | testes `Preco` (inclui o teto diário bloqueando pelo histórico) |
+| 3 | único | navegador: `paste` com imagem cria 0 referências com o visualizador aberto e 1 com ele fechado |
+| 4 | 1 e 2 | 31 testes sem o `sips`; `gh run list -R fbmoulin/kratos-stitch` |
+| 5 | 1 e 2 | testes `EmLote` |
+| 5 | 3 | navegador: ⌘1 = 1 `PATCH /nos` + 1 recarga (antes: um por galho); ⌘Z e ⌘⇧Z também 1 + 1 |
+| 5 | 5 | navegador: Realinhar com um cartão de página movido zera os nós e a página; ⌘Z devolve os dois |
+| 5 | 4 | **parcial**: no navegador só consegui selecionar um nó por script (o ⌘+clique sintético não soma à seleção); apagar e ⌘Z passaram pela rota nova com um nó. O caso de vários nós está coberto só no servidor (`test_apagar_varios_e_um_lote_so`) |
+
+Não verificado: `gerar_video.py` com SIGTERM (o mesmo código do `gerar.py`, sem teste próprio); o varredor do servidor
+chamando `soltar_orfaos` (a função é testada; a chamada a cada 60 s não).

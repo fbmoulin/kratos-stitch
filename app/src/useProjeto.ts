@@ -82,6 +82,31 @@ export function useProjeto(slug: string) {
     [slug, carregar],
   )
 
+  /** Muda vários nós de uma vez: um pedido ao servidor (tudo ou nada) e uma recarga. Devolve se o servidor aceitou.
+   * Os cartões de página (<IMG>/<vN>) não são nós: vão um a um, pelo impl.json. */
+  const mudarVarios = useCallback(
+    async (mapa: Record<string, Partial<No>>) => {
+      const paginas = Object.entries(mapa).filter(([id]) => id.includes('/'))
+      const nos = Object.fromEntries(Object.entries(mapa).filter(([id]) => !id.includes('/')))
+      const dasPaginas = Promise.all(paginas.map(([id, campos]) => mudar(id, campos)))
+      if (!Object.keys(nos).length) return (await dasPaginas).every(Boolean)
+      for (const [id, campos] of Object.entries(nos))
+        locais.current.set(id, { campos: { ...(locais.current.get(id)?.campos || {}), ...campos }, ate: Date.now() + 4000 })
+      setEstado((e) => (e ? { ...e, nos: e.nos.map((n) => (nos[n.id] ? { ...n, ...nos[n.id] } : n)) } : e))
+      let ok = true
+      try {
+        await api.mudarNos(slug, nos)
+      } catch (e) {
+        for (const id of Object.keys(nos)) locais.current.delete(id)
+        setErro((e as Error).message)
+        ok = false
+      }
+      carregar(true)
+      return (await dasPaginas).every(Boolean) && ok
+    },
+    [slug, carregar, mudar],
+  )
+
   const posicoes = useCallback(
     async (mapa: Record<string, { x: number; y: number }>) => {
       if (!Object.keys(mapa).length) return true
@@ -113,7 +138,7 @@ export function useProjeto(slug: string) {
     [carregar],
   )
 
-  return { estado, erro, setErro, carregar, mudar, posicoes, acao }
+  return { estado, erro, setErro, carregar, mudar, mudarVarios, posicoes, acao }
 }
 
 /** Os avanços com o desloc de uma versão de HTML (<IMG>/<vN>) trocado. */

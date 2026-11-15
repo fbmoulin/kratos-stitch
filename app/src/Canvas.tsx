@@ -31,7 +31,7 @@ export function Canvas({ slug, raiz }: { slug: string; raiz?: string }) {
 }
 
 function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
-  const { estado, erro, setErro, carregar, mudar: mudarCru, posicoes: posicoesCru, acao } = useProjeto(slug)
+  const { estado, erro, setErro, carregar, mudar: mudarCru, mudarVarios: mudarVariosCru, posicoes: posicoesCru, acao } = useProjeto(slug)
   const rf = useReactFlow()
   const [nodes, setNodes] = useState<NoRF[]>([])
   const [selecao, setSelecao] = useState<string[]>([])
@@ -85,14 +85,19 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   const porIdRef = useRef(porId)
   porIdRef.current = porId
   const lerPorId = useCallback(() => porIdRef.current, [])
-  const historico = useHistorico({ slug, porId: lerPorId, mudar: mudarCru, posicoes: posicoesCru, acao })
-  const { posicoes, apagar: apagarDeVez, emLote, passo } = historico
+  const historico = useHistorico({ slug, porId: lerPorId, mudar: mudarCru, mudarVarios: mudarVariosCru, posicoes: posicoesCru, acao })
+  const { posicoes, apagarVarios, emLote, passo } = historico
   // o HTML não é um arquivo de nó: por aqui só o deslocamento do card (arrastar, ⌘Z), que vai para o impl.json; o estado
   // dele vai pelos botões do card
   const mudarHist = historico.mudar
   const mudar = useCallback((id: string, c: Partial<No>) =>
     (lerPorId().get(id)?.tipo === 'site' && !('desloc' in c) ? Promise.resolve() : mudarHist(id, c)),
     [lerPorId, mudarHist])
+  // vários de uma vez (um pedido ao servidor, um passo de desfazer), com a mesma regra do `mudar` para as páginas
+  const mudarVariosHist = historico.mudarVarios
+  const mudarVarios = useCallback((mapa: Record<string, Partial<No>>) =>
+    mudarVariosHist(Object.fromEntries(Object.entries(mapa).filter(([id, c]) => lerPorId().get(id)?.tipo !== 'site' || 'desloc' in c))),
+    [lerPorId, mudarVariosHist])
   const arvTodos = useMemo(() => arvore(todos), [todos])
   const recortado = !!raiz && porId.has(raiz)
   const [filtrouRaiz, setFiltrouRaiz] = useState(false)
@@ -141,8 +146,8 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
     const raizes = confirmar || []
     setConfirmar(null)
     limparSelecao()
-    await emLote(async () => { for (const id of raizes) await apagarDeVez(id) })
-  }, [confirmar, emLote, apagarDeVez, limparSelecao])
+    await apagarVarios(raizes)
+  }, [confirmar, apagarVarios, limparSelecao])
 
 
   // o filtro: com algo desmarcado, a árvore vira só o que passa (cada nó no ancestral visível mais perto), sempre compacta e
@@ -491,9 +496,9 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   const marcar = useCallback(
     (lista: No[], e: Estado) => {
       const todos = lista.every((n) => n.estado === e)
-      emLote(() => lista.forEach((n) => mudar(n.id, { estado: todos ? 'neutra' : e })))
+      mudarVarios(Object.fromEntries(lista.map((n) => [n.id, { estado: todos ? 'neutra' : e }])))
     },
-    [mudar, emLote],
+    [mudarVarios],
   )
 
   // ⌘1/⌘2/⌘3 (ou 1/2/3): cada nível é uma geração de imagens, e o pedido anda junto com as imagens que gera —
@@ -510,20 +515,20 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
       return c
     }
     const nivel = (no: No) => no.tipo === 'pedido' ? contar(no.id) + 1 : no.tipo === 'imagem' ? contar(no.id) : 0
-    emLote(() => {
-      for (const no of nos) {
-        if (arv.soltos.has(no.id) || !(arv.filhos.get(no.id) || []).length) continue
-        const l = nivel(no)
-        const aberto = !no.recolhido && !(no.escondidos || []).length
-        const fecha = no.tipo === 'imagem' && l === n  // a imagem do nível fica; o que saiu dela é o próximo nível
-        const abre = no.tipo === 'pedido' ? l <= n : l < n
-        if (fecha && (!no.recolhido || (no.escondidos || []).length)) mudar(no.id, { recolhido: true, escondidos: [] })
-        else if (abre && !fecha && !aberto) mudar(no.id, { recolhido: false, escondidos: [] })
-      }
-    })
+    const mapa: Record<string, Partial<No>> = {}
+    for (const no of nos) {
+      if (arv.soltos.has(no.id) || !(arv.filhos.get(no.id) || []).length) continue
+      const l = nivel(no)
+      const aberto = !no.recolhido && !(no.escondidos || []).length
+      const fecha = no.tipo === 'imagem' && l === n  // a imagem do nível fica; o que saiu dela é o próximo nível
+      const abre = no.tipo === 'pedido' ? l <= n : l < n
+      if (fecha && (!no.recolhido || (no.escondidos || []).length)) mapa[no.id] = { recolhido: true, escondidos: [] }
+      else if (abre && !fecha && !aberto) mapa[no.id] = { recolhido: false, escondidos: [] }
+    }
+    mudarVarios(mapa)
     enquadrarDepois.current = true
     setAviso(`Nível ${n} · ⌘Z desfaz`)
-  }, [nos, arv, porId, emLote, mudar])
+  }, [nos, arv, porId, mudarVarios])
 
   // ⌘A: recolhe tudo o que não leva a um nó pinado (uma ação comum: dá para expandir de volta, e o ⌘Z desfaz)
   const irParaAprovados = useCallback(() => {
@@ -531,18 +536,18 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
     const pinados = new Set(estado?.vistas.pinados || [])      // o caminho até os pinados
     const caminho = caminhoAprovadas(nos, arv, pinados)
     if (!nos.some((n) => pinados.has(n.id))) { setAviso('Nada pinado ainda'); return }
-    emLote(() => {
-      for (const n of nos) {
-        const filhos = arv.filhos.get(n.id) || []
-        if (!filhos.length || !caminho.has(n.id)) continue
-        const escondidos = filhos.filter((f) => !caminho.has(f))
-        const iguais = !n.recolhido && JSON.stringify(n.escondidos || []) === JSON.stringify(escondidos)
-        if (!iguais) mudar(n.id, { recolhido: false, escondidos })
-      }
-    })
+    const mapa: Record<string, Partial<No>> = {}
+    for (const n of nos) {
+      const filhos = arv.filhos.get(n.id) || []
+      if (!filhos.length || !caminho.has(n.id)) continue
+      const escondidos = filhos.filter((f) => !caminho.has(f))
+      const iguais = !n.recolhido && JSON.stringify(n.escondidos || []) === JSON.stringify(escondidos)
+      if (!iguais) mapa[n.id] = { recolhido: false, escondidos }
+    }
+    mudarVarios(mapa)
     enquadrarDepois.current = true
     setAviso('Só o caminho até os pinados · ⌘Z desfaz')
-  }, [nos, arv, estado?.vistas.pinados, emLote, mudar])
+  }, [nos, arv, estado?.vistas.pinados, mudarVarios])
 
   // com o Viewer ou um modal aberto, os atalhos do canvas não valem (o Viewer tem os dele)
   const coberto = (!!visto && porId.has(visto)) || !!confirmar || spec || config
@@ -679,12 +684,12 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
         passo({ desfazer: () => ligar(false), refazer: () => ligar(true) })
         await ligar(true)
       }
-      for (const n of alvo) await mudar(n.id, { desloc: null })
+      await mudarVarios(Object.fromEntries(alvo.map((n) => [n.id, { desloc: null }])))
     })
     enquadrarDepois.current = true
-  }, [compacto, nos, todos, emLote, passo, acao, slug, mudar])
+  }, [compacto, nos, todos, emLote, passo, acao, slug, mudarVarios])
   const expandirTudo = useCallback(
-    () => emLote(() => recolhidos.forEach((n) => mudar(n.id, { recolhido: false, escondidos: [] }))), [emLote, recolhidos, mudar])
+    () => mudarVarios(Object.fromEntries(recolhidos.map((n) => [n.id, { recolhido: false, escondidos: [] }]))), [recolhidos, mudarVarios])
   // a pílula/botão do galho: se algo está escondido, mostra tudo; senão, recolhe o galho inteiro
   const alternar = useCallback((id: string) => {
     // a raiz da vista: vale o que ela mostra agora (a cópia de `nos`), não o que está gravado nela
@@ -904,7 +909,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
                   <Pin size={15} /> Só pinados <kbd>⌘A</kbd>
                 </button>
                 <button type="button" className="acao-pop" disabled={!deslocados.length}
-                  onClick={() => emLote(() => deslocados.forEach((n) => mudar(n.id, { desloc: null })))}>
+                  onClick={() => mudarVarios(Object.fromEntries(deslocados.map((n) => [n.id, { desloc: null }])))}>
                   <LayoutGrid size={15} /> Realinhar <span className="mudo">{deslocados.length ? `${deslocados.length} ${deslocados.length === 1 ? 'ajuste manual' : 'ajustes manuais'}` : 'nada fora do lugar'}</span>
                 </button>
                 <span className="menu-sep" />

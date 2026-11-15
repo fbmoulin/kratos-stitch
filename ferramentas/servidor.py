@@ -22,7 +22,9 @@ Rotas (JSON; erro volta como {"erro": "…"}):
 - PUT  /api/projetos/<slug>/brief {texto}
 - POST /api/projetos/<slug>/nos {tipo: tela|pedido, …}  cria um nó
 - PATCH /api/projetos/<slug>/nos/<id> {…}              só os campos que o app pode mexer (CAMPOS_APP)
+- PATCH /api/projetos/<slug>/nos {id: {…}, …}         vários nós de uma vez; tudo ou nada
 - DELETE /api/projetos/<slug>/nos/<id>                 o nó e todo o galho dele vão para a lixeira (num lote)
+- POST /api/projetos/<slug>/nos/apagar {ids}           vários nós (e os galhos) num lote só da lixeira
 - POST /api/projetos/<slug>/nos/<id>/restaurar         traz de volta da lixeira (o ⌘Z do app)
 - PUT  /api/projetos/<slug>/posicoes {id: {x, y}}      várias posições de uma vez (arrastar, reorganizar)
 - POST /api/projetos/<slug>/nos/<id>/enviar            pedido/brief → enviado + linha na fila.jsonl (o Claude observa)
@@ -346,14 +348,35 @@ def mudar_no(h, m, corpo):
     slug, id_ = m.groups()
     with B.travado(slug):
         no = B.ler_no(slug, id_)
-        campos = limpar_campos(no['tipo'], corpo)
-        if no['tipo'] == 'pedido' and no.get('status') != 'rascunho' and SO_RASCUNHO & campos.keys():
-            raise Erro('Este pedido já foi enviado; crie um novo a partir dele.')
-        if 'entradas' in campos:
-            campos['entradas'] = entradas_validas(slug, {n['id']: n for n in B.nos(slug)}, campos['entradas'],
-                                                  tuple(no.get('entradas') or ()))
-        no.update(campos)
+        no.update(campos_validos(slug, no, corpo))
         return B.gravar_no(slug, no)
+
+
+def campos_validos(slug: str, no: dict, corpo: dict) -> dict:
+    """Chame com a trava. O que o app pode mudar neste nó, já validado (levanta Erro se não pode)."""
+    campos = limpar_campos(no['tipo'], corpo)
+    if no['tipo'] == 'pedido' and no.get('status') != 'rascunho' and SO_RASCUNHO & campos.keys():
+        raise Erro('Este pedido já foi enviado; crie um novo a partir dele.')
+    if 'entradas' in campos:
+        campos['entradas'] = entradas_validas(slug, {n['id']: n for n in B.nos(slug)}, campos['entradas'],
+                                              tuple(no.get('entradas') or ()))
+    return campos
+
+
+@rota('PATCH', f'/api/projetos/{SLUG}/nos')
+def mudar_nos(h, m, corpo):
+    """Vários nós de uma vez ({id: campos}): recolher um nível, marcar a seleção, realinhar. Tudo ou nada: se um
+    item não pode, nenhum muda (e o app desfaz tudo num passo só)."""
+    slug = m.group(1)
+    with B.travado(slug):
+        mudados = []
+        for id_, campos in corpo.items():
+            if not isinstance(campos, dict):
+                raise Erro(f'{id_}: campos inválidos')
+            no = B.ler_no(slug, id_)
+            no.update(campos_validos(slug, no, campos))
+            mudados.append(no)
+        return [B.gravar_no(slug, no) for no in mudados]
 
 
 @rota('PUT', f'/api/projetos/{SLUG}/posicoes')
@@ -374,14 +397,28 @@ def posicoes(h, m, corpo):
 def apagar_no(h, m, corpo):
     """Apaga o nó e todo o galho que saiu dele (um lote na lixeira; o ⌘Z restaura tudo). O brief não sai."""
     slug, id_ = m.groups()
+    return apagar(slug, [id_])
+
+
+@rota('POST', f'/api/projetos/{SLUG}/nos/apagar')
+def apagar_nos(h, m, corpo):
+    """Vários nós (e os galhos deles) num lote só da lixeira: restaurar o primeiro traz todos de volta."""
+    ids = corpo.get('ids')
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+        raise Erro('Passe os códigos em `ids`.')
+    return apagar(m.group(1), list(dict.fromkeys(ids)))
+
+
+def apagar(slug: str, ids: list[str]) -> dict:
+    id_ = ids[0]
     with B.travado(slug):
-        no = B.ler_no(slug, id_)
         todos = B.nos(slug)
-        if no['tipo'] == 'brief':
-            raise Erro('O brief é a raiz do projeto e não é apagado.')
-        junto = B.galho(todos, id_)
-        sai = {id_, *junto}
         por_id = {n['id']: n for n in todos}
+        for i in ids:
+            if B.ler_no(slug, i)['tipo'] == 'brief':
+                raise Erro('O brief é a raiz do projeto e não é apagado.')
+        junto = list(dict.fromkeys(j for i in ids for j in [i, *B.galho(todos, i)] if j != id_))
+        sai = {id_, *junto}
         if any(por_id[i]['tipo'] == 'pedido' and por_id[i].get('status') in ('enviado', 'trabalhando') for i in sai):
             raise Erro('Há um pedido em andamento neste galho: espere o Claude terminar.')
         for n in todos:  # rascunhos que ficam tiram as entradas que saíram

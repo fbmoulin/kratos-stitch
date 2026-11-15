@@ -17,10 +17,11 @@ export function useHistorico(opts: {
   slug: string
   porId: () => Map<string, No>
   mudar: (id: string, campos: Partial<No>) => Promise<boolean>
+  mudarVarios: (mapa: Record<string, Partial<No>>) => Promise<boolean>
   posicoes: (mapa: Record<string, Pos>) => Promise<boolean>
   acao: <T>(fn: () => Promise<T>) => Promise<T | undefined>
 }) {
-  const { slug, porId, mudar, posicoes, acao } = opts
+  const { slug, porId, mudar, mudarVarios, posicoes, acao } = opts
   const pilhas = useRef<{ desfazer: Passo[]; refazer: Passo[] }>({ desfazer: [], refazer: [] })
   const lote = useRef<Passo[] | null>(null)
   const fila = useRef<Promise<unknown>>(Promise.resolve())  // desfazer/refazer rodam um de cada vez
@@ -61,6 +62,22 @@ export function useHistorico(opts: {
     return mudar(id, campos)
   }, [porId, mudar, registrar])
 
+  /** Vários nós de uma vez (recolher um nível, marcar a seleção): um pedido ao servidor e um passo só de desfazer. */
+  const mudarVariosH = useCallback((mapa: Record<string, Partial<No>>) => {
+    const antes: Record<string, Partial<No>> = {}
+    const depois: Record<string, Partial<No>> = {}
+    for (const [id, campos] of Object.entries(mapa)) {
+      const no = porId().get(id)
+      const chaves = (Object.keys(campos) as (keyof No)[]).filter((k) => !FORA.has(k))
+      if (!no || !chaves.length) continue
+      antes[id] = Object.fromEntries(chaves.map((k) => [k, no[k] ?? VAZIO[k] ?? null])) as Partial<No>
+      depois[id] = Object.fromEntries(chaves.map((k) => [k, campos[k]])) as Partial<No>
+    }
+    if (!Object.keys(mapa).length) return Promise.resolve(true)
+    if (Object.keys(antes).length) registrar({ desfazer: () => mudarVarios(antes), refazer: () => mudarVarios(depois) })
+    return mudarVarios(mapa)
+  }, [porId, mudarVarios, registrar])
+
   const posicoesH = useCallback((mapa: Record<string, Pos>) => {
     const antes: Record<string, Pos> = {}
     for (const id of Object.keys(mapa)) {
@@ -71,12 +88,13 @@ export function useHistorico(opts: {
     return posicoes(mapa)
   }, [porId, posicoes, registrar])
 
-  /** Apagar (rascunho, referência) vai para a lixeira do projeto; desfazer traz de volta. */
-  const apagarH = useCallback(async (id: string) => {
-    const r = await acao(() => api.apagarNo(slug, id))
+  /** Vários nós (e os galhos deles) num lote só da lixeira: um passo de desfazer, que restaura pelo primeiro. */
+  const apagarVariosH = useCallback(async (ids: string[]) => {
+    if (!ids.length) return
+    const r = await acao(() => api.apagarNos(slug, ids))
     if (r) registrar({
-      desfazer: async () => (await acao(() => api.restaurarNo(slug, id))) !== undefined,
-      refazer: async () => (await acao(() => api.apagarNo(slug, id))) !== undefined,
+      desfazer: async () => (await acao(() => api.restaurarNo(slug, ids[0]))) !== undefined,
+      refazer: async () => (await acao(() => api.apagarNos(slug, ids))) !== undefined,
     })
   }, [slug, acao, registrar])
 
@@ -112,7 +130,7 @@ export function useHistorico(opts: {
   const refazer = useCallback(() => andar('refazer'), [andar])
 
   return useMemo(
-    () => ({ mudar: mudarH, posicoes: posicoesH, apagar: apagarH, criado, passo: registrar, emLote, desfazer, refazer }),
-    [mudarH, posicoesH, apagarH, criado, registrar, emLote, desfazer, refazer],
+    () => ({ mudar: mudarH, mudarVarios: mudarVariosH, posicoes: posicoesH, apagarVarios: apagarVariosH, criado, passo: registrar, emLote, desfazer, refazer }),
+    [mudarH, mudarVariosH, posicoesH, apagarVariosH, criado, registrar, emLote, desfazer, refazer],
   )
 }

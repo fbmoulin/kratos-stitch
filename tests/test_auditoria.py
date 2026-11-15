@@ -269,6 +269,50 @@ class Entradas(Api):
         self.assertEqual((status, no['entradas']), (200, [self.a['vid']]))
 
 
+class EmLote(Api):
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Modelos')['slug']
+        self.a = arvore_3d(self.slug)
+        self.url = f'/api/projetos/{self.slug}/nos'
+
+    def test_mudar_varios(self):
+        a = self.a
+        status, nos = self.pedir('PATCH', self.url, {a['img']: {'recolhido': True, 'escondidos': []}, a['vid']: {'estado': 'descartada'}})
+        self.assertEqual((status, [n['id'] for n in nos]), (200, [a['img'], a['vid']]))
+        self.assertTrue(B.ler_no(self.slug, a['img'])['recolhido'])
+        self.assertEqual(B.ler_no(self.slug, a['vid'])['estado'], 'descartada')
+
+    def test_mudar_varios_e_tudo_ou_nada(self):
+        a = self.a
+        for ruim in ({a['vid']: {'estado': 'inexistente'}}, {'NAO-999': {'recolhido': True}}, {a['p_3d']: {'intencao': 'já foi concluído'}},
+                     {f'{a["img"]}/v1': {'desloc': None}}, {a['vid']: 'isto não é um objeto'}):
+            status, _ = self.pedir('PATCH', self.url, {a['img']: {'recolhido': True}, **ruim})
+            self.assertIn(status, (404, 422), ruim)
+            self.assertFalse(B.ler_no(self.slug, a['img']).get('recolhido'), ruim)
+
+    def test_apagar_varios_e_um_lote_so(self):
+        a = self.a
+        antes = sorted(n['id'] for n in B.nos(self.slug))
+        status, dados = self.pedir('POST', f'{self.url}/apagar', {'ids': [a['p_3d'], a['p_vid'], a['p_3d']]})
+        some = {a['p_3d'], a['mod'], a['p_vid'], a['vid'], a['p_ast'], a['ast']}
+        self.assertEqual((status, set(dados['apagados'])), (200, some))
+        self.assertEqual(len(dados['apagados']), len(some))
+        self.assertEqual(sorted(n['id'] for n in B.nos(self.slug)), sorted(set(antes) - some))
+        self.assertEqual(len(list((B.pasta(self.slug) / 'lixeira').iterdir())), 1)
+        self.assertEqual(self.pedir('POST', f'{self.url}/{a["p_3d"]}/restaurar')[0], 200)
+        self.assertEqual(sorted(n['id'] for n in B.nos(self.slug)), antes)
+
+    def test_apagar_varios_recusa_o_lote_inteiro(self):
+        a = self.a
+        antes = sorted(n['id'] for n in B.nos(self.slug))
+        brief = next(n['id'] for n in B.nos(self.slug) if n['tipo'] == 'brief')
+        neo.alterar(self.slug, a['p_vid'], status='trabalhando')
+        for ids in ([a['p_3d'], brief], [a['p_3d'], a['p_vid']], [a['p_3d'], 'NAO-999'], []):
+            self.assertIn(self.pedir('POST', f'{self.url}/apagar', {'ids': ids})[0], (404, 422), ids)
+            self.assertEqual(sorted(n['id'] for n in B.nos(self.slug)), antes, ids)
+
+
 class ErrosDoServidor(Api):
     def setUp(self):
         super().setUp()
