@@ -1,0 +1,19 @@
+{
+ "id": "GLN-006",
+ "tipo": "imagem",
+ "criado": "2026-11-22T06:33:58",
+ "pos": null,
+ "comentarios": [],
+ "pedido": "GLN-003",
+ "nome": "Eclipse",
+ "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Eclipse — dramatic closeup charcoal planet with thin crescent sunlight, surrounded by golden neural filaments forming galactic arms, with distant satellites visible",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "estado": "neutra",
+ "atualizado": "2026-11-22T06:33:58",
+ "arquivo": "images/GLN-006.jpg",
+ "thumb": "thumbs/GLN-006.jpg",
+ "largura": 1672,
+ "altura": 941,
+ "custo": 0
+}

@@ -1,0 +1,13 @@
+{
+ "id": "GLN-002",
+ "tipo": "tela",
+ "criado": "2026-11-22T06:32:39",
+ "pos": {
+  "x": 460,
+  "y": 0
+ },
+ "comentarios": [],
+ "titulo": "Principal",
+ "pai": "GLN-001",
+ "atualizado": "2026-11-22T06:32:39"
+}

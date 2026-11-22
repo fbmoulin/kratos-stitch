@@ -1,0 +1,19 @@
+{
+ "id": "GLN-004",
+ "tipo": "imagem",
+ "criado": "2026-11-22T06:33:58",
+ "pos": null,
+ "comentarios": [],
+ "pedido": "GLN-003",
+ "nome": "Órbita",
+ "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Órbita — luminous inclined spiral galaxy made of fine champagne gold dust, with 5 legible pearl worlds orbiting a warm nucleus, restrained horizontal composition",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "estado": "neutra",
+ "atualizado": "2026-11-22T06:33:58",
+ "arquivo": "images/GLN-004.jpg",
+ "thumb": "thumbs/GLN-004.jpg",
+ "largura": 1672,
+ "altura": 941,
+ "custo": 0
+}

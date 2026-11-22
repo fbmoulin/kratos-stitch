@@ -1,0 +1,51 @@
+{
+ "id": "GLN-003",
+ "tipo": "pedido",
+ "criado": "2026-11-22T06:32:39",
+ "pos": null,
+ "comentarios": [],
+ "tela": "GLN-002",
+ "entradas": [
+  "GLN-002"
+ ],
+ "intencao": "Comparar cinco wireframes do painel em preto e dourado: Órbita, Constelação, Eclipse, Atlas e Nebulosa.",
+ "quantidade": 5,
+ "midia": "imagem",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "resolucao": "1K",
+ "literal": false,
+ "status": "concluido",
+ "saidas": [
+  "GLN-004",
+  "GLN-005",
+  "GLN-006",
+  "GLN-007",
+  "GLN-008"
+ ],
+ "atualizado": "2026-11-22T06:33:59",
+ "variacoes": [
+  {
+   "nome": "Órbita",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Órbita — luminous inclined spiral galaxy made of fine champagne gold dust, with 5 legible pearl worlds orbiting a warm nucleus, restrained horizontal composition"
+  },
+  {
+   "nome": "Constelação",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Constelação — sparse broad angular neural constellation in deep space, clusters arranged into asymmetrical spiral arms, matte planets linked in fine gold triangular synapses"
+  },
+  {
+   "nome": "Eclipse",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Eclipse — dramatic closeup charcoal planet with thin crescent sunlight, surrounded by golden neural filaments forming galactic arms, with distant satellites visible"
+  },
+  {
+   "nome": "Atlas",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Atlas — top-down precision astronomical map, engraved nested elliptical golden orbits interwoven with a sparse neural network, discrete shaded planets like jewels on black paper"
+  },
+  {
+   "nome": "Nebulosa",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Nebulosa — airy volumetric bronze nebula branching like organic dendrites, asymmetric S-shaped galactic flow between dispersed dark pearl planets, large deep-black negative spaces"
+  }
+ ],
+ "concluido_em": "2026-11-22T06:33:59",
+ "custo": 0
+}
