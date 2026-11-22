@@ -17,7 +17,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', mudou)
   }, [])
   useEffect(() => {
-    document.title = r?.vista ? `${r.vista} · Neo Stitch` : slug ? `${slug} · Neo Stitch` : 'Neo Stitch'
+    document.title = r?.vista ? `${r.vista} · Kratos Stitch` : slug ? `${slug} · Kratos Stitch` : 'Kratos Stitch'
   }, [slug, r?.vista])
   return slug ? <Canvas key={`${slug}/${r?.vista || ''}`} slug={slug} raiz={r?.vista || undefined} /> : <Home />
 }

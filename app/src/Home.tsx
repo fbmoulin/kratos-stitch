@@ -60,7 +60,7 @@ export function Home() {
     <main className="home" onClick={() => selecionar(null)}>
       <header className="home-topo">
         <img src="/favicon.svg" alt="" width={28} height={28} />
-        <h1>Neo Stitch</h1>
+        <h1>Kratos Stitch</h1>
         <span className="cresce" />
         <button type="button" className="ico rot" title="Chaves de API" onClick={(e) => { e.stopPropagation(); setConfig(true) }}>
           <Settings size={16} /><span>Config</span>
