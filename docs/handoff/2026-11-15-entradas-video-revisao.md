@@ -1,5 +1,7 @@
 # Handoff 2026-11-15 — entradas de rascunho, vídeo, revisão e artefato para o autor
 
+> **Superado.** O estado e as decisões atuais estão em `docs/handoff/2026-11-22-portao-de-gasto-e-repo-publico.md`. Este arquivo é histórico: o repositório hoje é público, o patch em `rascunhos/` foi aposentado, e o prompt de retomada abaixo não vale mais.
+
 Continua `docs/handoff/2026-11-14-auditoria-inicial.md` (Atualizações 1 a 8).
 
 ## Estado medido

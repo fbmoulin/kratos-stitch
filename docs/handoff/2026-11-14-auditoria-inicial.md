@@ -1,5 +1,7 @@
 # Handoff 2026-11-14 — clone, instalação e auditoria inicial
 
+> **Superado.** O estado e as decisões atuais estão em `docs/handoff/2026-11-22-portao-de-gasto-e-repo-publico.md`. Este arquivo é histórico: o repositório hoje é público, o patch em `rascunhos/` foi aposentado, e o prompt de retomada abaixo não vale mais.
+
 ## Estado medido
 
 - Repo: `https://github.com/rtadewald/neo-stitch.git`, branch `main`, HEAD `d6d0c86`, clonado em `/Users/felipemoulin/Projetos/neo-stitch`.

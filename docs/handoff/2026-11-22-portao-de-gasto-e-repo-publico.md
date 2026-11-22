@@ -1,155 +1,118 @@
-# Handoff 2026-11-22 — repositório público, portão de gasto e fila sem ouvinte
+# HANDOFF — Kratos Stitch (clone do Neo Stitch): repositório público, portão de gasto, vídeo de referência (2026-11-22)
 
-Continua `docs/handoff/2026-11-21-uso-pratico-novo-projeto.md`.
+> O contexto foi limpo. Este arquivo é a fonte e substitui os handoffs de 14, 15 e 21/11 (que ficam como histórico).
+> Tudo abaixo foi medido em 2026-11-22, exceto onde marcado. Números são pistas datadas: confirme por `git` e pela suíte.
 
-## Estado medido (2026-11-22)
+## Estado
 
-| Item | Medição |
-|---|---|
-| Branch | `correcoes-auditoria`; HEAD local = `kratos/correcoes-auditoria` (o SHA deste handoff está no `git log -1`) |
-| Código | `ea778ee` |
-| Testes | `python3 -m unittest discover -s tests` → 92 OK (eram 74) |
-| `uvx ruff check ferramentas` | 21 (linha de base) |
-| `oxlint` em `app/` | 9 (linha de base) |
-| CI (`fbmoulin/kratos-stitch`) | `success` em `0c77e5a`, `4723564`, `d384d7a`, `ef7c79d`; o de `ea778ee` e o deste handoff: conferir com `gh run list` |
-| Visibilidade | `fbmoulin/kratos-stitch` é **público** desde 2026-11-22; branch padrão `main` (o código original) |
-| Servidor local | 127.0.0.1:8730, reiniciado com `ea778ee` |
-| Produção | não há; o app é só local |
-| Gasto de API acumulado | US$ 0,167 (nenhuma geração nesta sessão) |
+- **Repo / branch:** `/Users/felipemoulin/Projetos/neo-stitch` @ `correcoes-auditoria`. ⚠️ O branch padrão do remoto é
+  `main`, que é o código original do autor; todo o trabalho está em `correcoes-auditoria`.
+- **Remotos:** `kratos` = `fbmoulin/kratos-stitch`, **público** desde 2026-11-22 (é para onde se envia); `origin` = o
+  repositório do autor (nunca enviar).
+- **HEAD do código:** `b6673db` (o commit deste handoff vem depois; veja `git log -1`). Working tree limpo, remoto em dia.
+- **Testes:** `python3 -m unittest discover -s tests` → 103 OK. `uvx ruff check ferramentas` → 21 e `oxlint` em `app/` → 9
+  (as duas são linhas de base do código do autor, não zero).
+- **CI:** `success` até `b4bca59`; o de `b6673db` estava em andamento quando este arquivo foi escrito.
+- **Produção:** não há. O app é local: `uv run ferramentas/servidor.py` → http://localhost:8730/. O servidor desta sessão
+  morre com ela.
+- **Gasto de API:** projeto `brain` US$ 1,30 (15 imagens e 1 vídeo, tudo em 22/11); `teste-e2e` US$ 0,167.
+- **Fila:** `neo.py pendentes` → nada pendente.
 
-## Decisões do dono nesta sessão
+## 🔒 Decisões fechadas — NÃO REABRIR
 
-- O autor do Neo Stitch é professor de um curso da ASIMOV Academy que o dono faz, e liberou o uso do repositório como
-  material do curso. O item "licença" está encerrado (nota em `docs/pesquisa/2026-11-15-itens-abertos.md`).
-- O repositório passou a público. Antes: histórico varrido por chaves (OpenRouter, Anthropic, GitHub, AWS, Google), sem
-  ocorrência; `.env`, `projects/` e `fila.jsonl` nunca foram commitados.
-- Nada é enviado ao autor: push só para `kratos`, sem issue, PR ou branch em `origin`.
-- O patch `rascunhos/correcoes-neo-stitch.patch` foi aposentado: não é mais regenerado.
-- O "ok" para gastar é dado no chat, a cada geração.
+- **Licença está resolvida.** O autor é professor de um curso da ASIMOV Academy que o dono faz e liberou o uso do
+  repositório como material do curso. Descartado: pedir licença por escrito (a recomendação antiga de
+  `docs/pesquisa/2026-11-15-itens-abertos.md`, que agora traz a nota de superado).
+- **O repositório é público por decisão do dono.** Antes de publicar, o histórico foi varrido por chaves (OpenRouter,
+  Anthropic, GitHub, AWS, Google): nenhuma. Não voltar a privado sem ele pedir.
+- **Nada é enviado ao autor.** Sem push para `origin`, sem issue, PR ou branch lá. Motivo do dono: o autor o segue no
+  GitHub e o repositório é público. Descartado junto: o patch `rascunhos/correcoes-neo-stitch.patch`, **aposentado**, não
+  é mais regenerado (os handoffs antigos mandam regenerar: ignore).
+- **O "ok" para gastar é no chat, por pedido, com a estimativa.** Descartado: tratar o clique em Enviar como ok, e um
+  trabalhador automático no servidor (um clique viraria cobrança). Por isso os tetos por pedido são **zero**
+  (`base.TETOS`): todo gerador para na saída 3 e o pedido volta à fila como "aguarda seu ok".
+- **Mensagens curtas do dono no chat ("prossiga", "sugestão", "ok para os pedidos pendentes") valem como o ok** para o
+  que acabou de ser apresentado com valor. Pedido enviado **sem texto** não é pedido de variações: ele recusou os três
+  que mandou assim (queria vídeo). Pergunte o que ele quer antes de estimar.
+- **Cancelar envio volta a rascunho** (ou a `erro` se o pedido já tinha saídas) e grava `cancelado_em`, que faz o
+  `neo.py pegar` recusar até um novo envio. Motivo: a linha antiga fica na `fila.jsonl` e um agente travaria o rascunho
+  que ele está editando.
+- **Vídeo de referência é um nó `referencia` cujo `arquivo` é a capa** (jpg), com o mp4 em `video`. Motivo: tudo que já
+  lê referências segue lendo uma imagem. Descartado: tipo de nó novo, e expandir o vídeo em quadros dentro do gerador.
+- **Quadros: um por segundo, de 1 a 16, cada um um nó de referência.** O dono pediu "o máximo aplicável"; 16 é escolha
+  da spec porque extrair é grátis e ligar custa. Um vídeo anexado a um comentário entra no pedido só com a capa.
+- **Não consertar:** `.mudo.mp4` órfão em SIGTERM (janela de menos de 1 s, sem leitor) e `entradas_antes` em pedido com
+  erro (campo morto). Medidos e julgados sem valor.
+- **Título da tela é "Kratos Stitch"** só na aba e na página inicial. A skill `neo-stitch`, as chaves `neo:*` do
+  localStorage, o `X-Title` enviado ao OpenRouter e o crédito ao original ficam como estão.
 
-## Commits
+## ❌ Tentado e descartado
 
-| SHA | O quê |
-|---|---|
-| `0c77e5a` | Pesquisa: a seção da licença está superada pela autorização do autor |
-| `4723564` | Vídeo: o pedido volta como erro quando o catálogo do OpenRouter falha |
-| `d384d7a` | Portão de gasto, aviso de fila sem ouvinte, cancelar envio, estimativa no rascunho de imagem |
-| `ef7c79d` | Vídeo: dimensões de exibição quando o arquivo traz rotação |
-| `ea778ee` | Portão: correções da revisão independente do `d384d7a` |
+- **Estimativa do rascunho de imagem dentro da barra do cartão** → a barra passa de 278 px e a estimativa quebra em duas
+  linhas; ficou numa linha própria abaixo. Encolher os seletores deixava o modelo com 33 px.
+- **Testar "imagem disfarçada de vídeo" com um PNG** → o PNG já cai na checagem de duração e o teste não exercita a de
+  formato; o caso que a exercita é um GIF animado.
+- **Extração de quadros "tudo ou nada"** → recusava vídeos reais (áudio mais longo que a imagem, 1 quadro por segundo).
+  Hoje o instante sem quadro é pulado e só a falta total recusa.
+- **`pop('aguarda_ok')` no enviar tirado como "inalcançável"** → era alcançável por `devolver_pedido`; voltou, com teste.
+- **Claude in Chrome para conferir o app** → a extensão desconectou no meio da sessão. O Playwright MCP
+  (`mcp__plugin_playwright_playwright__*`) funcionou; ele só grava arquivo dentro de `~`.
 
-Spec e pre-mortem: `docs/specs/2026-11-22-fila-sem-ouvinte-e-portao-de-gasto.md` (rev2, veredito REFINE incorporado).
+## ▶ Próxima ação concreta
 
-## Como ficou o fluxo de um pedido
+1. Se o dono for usar o canvas: `uv run ferramentas/servidor.py` em segundo plano, ligar o ouvinte com a ferramenta
+   Monitor (`/Users/felipemoulin/Projetos/neo-stitch/ferramentas/ouvir.sh`, `timeout_ms: 1800000`, re-armar a cada
+   expiração) e rodar `uv run ferramentas/neo.py pendentes`. O roteiro de cada evento está em
+   `.claude/skills/neo-stitch/SKILL.md`.
+2. Senão, o item 1 de "Em aberto" é o de maior valor.
 
-1. Enviar no app grava o pedido como `enviado`. Sem ouvinte, a pílula do topo diz "Claude não está ouvindo" e o pedido
-   mostra "fila · ninguém ouvindo", com um botão de cancelar (volta a rascunho).
-2. O agente pega o pedido e roda o gerador. Com os tetos por pedido em zero, o gerador sai com código 3 e a estimativa,
-   e o pedido volta para a fila como "aguarda seu ok · ≈ $X".
-3. O agente pergunta no chat. Com o sim: `neo.py pegar` de novo e o gerador com `--confirmado`. Com o não:
-   `neo.py erro <id> "Não autorizado"`.
+## ⚠️ Armadilhas ativas
 
-## Processo
+- **A skill `neo-stitch` é de projeto:** só carrega numa sessão aberta em `/Users/felipemoulin/Projetos/neo-stitch`. Em
+  outra pasta, leia o `SKILL.md` à mão.
+- **O Monitor expira em 30 minutos** e `tail -n0` não relê linhas antigas: ao religar, rode `neo.py pendentes`.
+- **O servidor não recarrega código Python:** depois de mexer em `ferramentas/`, mate o processo da 8730 e suba de novo.
+  O app (`app/src`) precisa de `npm --prefix app run build`.
+- **O dono escreve instruções em comentários das imagens.** Comentário simples não entra na fila; só o `⌘↵` (sufixo
+  `[pedido <id>]`). Se ele disser "execute o meu prompt", leia os comentários dos nós do projeto.
+- **Os testes rodam com tetos folgados** (`Isolado.setUp` troca `B.TETOS`); só `PortaoDeGasto` usa os zeros de verdade.
+  Teste novo que gere sem `--confirmado` passa por isso.
+- **O portão lê os tetos do `projeto.json`.** Projeto criado antes de 22/11 ou alterado por PATCH mantém os seus.
+- **A estimativa do portão superestima:** US$ 0,14 por imagem na tabela contra US$ 0,03 a 0,15 cobrados; a causa da
+  variação não foi identificada.
+- **Mutação por script:** desfaça com o `replace` inverso, nunca com `git checkout`; apague `ferramentas/__pycache__`
+  entre mutações.
 
-- Item 1: teste antes do conserto, revisão independente (aprovou; quatro mutações sobreviviam, teste endurecido).
-- Itens 2 e 3: spec → pre-mortem (REFINE) → rev2 → implementação com testes → conferência no navegador → revisão
-  independente do `d384d7a`, que achou três defeitos reais, corrigidos em `ea778ee` com teste e mutação.
-- O conserto do `ea778ee` **não teve uma segunda revisão independente**; as nove mutações que rodei sobre ele morreram.
-- A conferência no navegador foi feita antes do `ea778ee`. Depois dele não reabri o navegador (a mudança foi no servidor
-  e nos geradores, coberta por teste).
+## Em aberto (não bloqueia)
 
-## Em aberto
+1. `d24826f` (correções do vídeo de referência e do comentário-pedido) **não teve segunda revisão independente**, e
+   depois dele o upload de vídeo e o aviso de arquivo não aceito não foram reabertos no navegador.
+2. Limites conhecidos do upload: `Transfer-Encoding: chunked` sem `Content-Length` (anterior); vários vídeos soltos de
+   uma vez sobrepõem as grades; soltar um arquivo sobre o visualizador, fora da caixa de comentário, sobe pelo canvas
+   por trás (anterior); vídeo de horas segura a requisição; sem indicador de progresso.
+3. Mutações sem teste: troca de largura e altura na rotação do vídeo enviado; webm sem duração.
+4. Gerador de vídeo: o pedido ainda pode ficar preso por `B.medidas` sem `sips`, por `catalogo[...]['name']` ausente e por
+   Ctrl-C ou SIGTERM durante a leitura do catálogo. A chave do OpenRouter pode aparecer em `pedido['erro']` se vier do
+   ambiente com quebra de linha.
+5. A barra do rascunho de imagem transborda o cartão (313 px em 278), anterior a esta sessão.
+6. O número máximo de imagens de referência que o modelo aceita num pedido não foi medido.
+7. No projeto `brain` há rascunhos vazios criados pelo dono (`BRA-016`, `BRA-025`, `BRA-035`, `BRA-036`).
+8. O vídeo `BRA-041` (Grok Imagine 1.5 Lite) borrou o texto miúdo dos cartões; foi oferecido repetir no Wan 3.0
+   (US$ 0,51) ou no Seedance 2.5 (US$ 1,39), sem resposta.
+9. `MEMORY.md` do usuário está em 17,5 KB, acima dos 17,1 KB que o harness pede; não foi compactado.
 
-1. O dono ainda não confirmou que o "Novo projeto" funciona para ele.
-2. Trocar o título da tela para "Kratos Stitch": sem resposta. São três linhas (`app/index.html:10`, `app/src/App.tsx:20`,
-   `app/src/Home.tsx:63`) e um rebuild.
-3. Ninguém ouve a fila por conta própria: o ouvinte só existe numa sessão do Claude Code aberta nesta pasta, depois de
-   "ouça o canvas", e o Monitor cai em 30 minutos.
-4. Limites conhecidos do portão, na spec: projeto antigo ou com tetos alterados por PATCH mantém os seus; `neo.py pegar`
-   num pedido que está gerando; pedido `trabalhando` com gerador morto.
-5. Achados da revisão do item 1 que ficaram fora: o mesmo travamento em três pontos adiante do gerador de vídeo
-   (`plano` já foi coberto; restam `B.medidas` sem `sips` e `catalogo[...]['name']`), Ctrl-C ou SIGTERM durante a leitura
-   do catálogo, e a chave do OpenRouter podendo aparecer em `pedido['erro']` se vier do ambiente com quebra de linha.
-6. A barra do rascunho de imagem já transbordava o cartão antes desta sessão (313 px em 278); não corrigido.
-7. Não consertados por decisão: `.mudo.mp4` órfão em SIGTERM e `entradas_antes` em pedido com erro.
-8. O branch padrão do repositório público é `main`, o código original; as correções estão em `correcoes-auditoria`.
-9. `fila.jsonl` tem duas linhas do `TES-010`, pedido de teste criado, enviado, cancelado e apagado nesta sessão.
+## Confiança
 
-## Regras que valem
+- **Medi e confirmei:** suíte 103 OK; lints nas linhas de base; visibilidade pública (`gh repo view`); HEAD local igual
+  ao remoto; no navegador, antes do `d24826f`: soltar um mp4 cria vídeo e quadros, o visualizador toca a referência,
+  `⌘↵` com anexo cria pedido enviado, cancelar volta a rascunho, a pílula e o pedido avisam que ninguém ouve; depois do
+  `d24826f`: três `⌘↵` seguidos criam um pedido só; título "Kratos Stitch" servido pelo servidor.
+- **Li o código mas não executei:** o player da referência-vídeo com pins de tempo; o aviso "Só imagens e vídeos…".
+- **Vi dois quadros, não o vídeo:** `BRA-041` (interface parada, galáxia girou, texto miúdo borrado no fim).
+- **Estou supondo:** que o CI de `b6673db` e o deste handoff fecham verdes (a mudança foi de três strings e de docs).
 
-- Push só para `kratos`. Nunca para `origin`.
-- Geração paga só com ok explícito no chat, por pedido. Nunca imprimir nem ler chaves (`.env`).
-- Mudança não trivial: spec → pre-mortem → teste → implementação → revisão independente, usando agentes e skills.
+## Onde está o detalhe
 
-## Prompt de retomada
-
-```
-Leia docs/handoff/2026-11-22-portao-de-gasto-e-repo-publico.md em /Users/felipemoulin/Projetos/neo-stitch.
-Meça de novo antes de confiar: git status, git log -3, gh run list -R fbmoulin/kratos-stitch --limit 3,
-python3 -m unittest discover -s tests, gh repo view fbmoulin/kratos-stitch --json visibility, e se há servidor em 8730 (lsof).
-O repositório é público; push só para o remoto kratos, nada para origin. Geração paga só com o meu ok no chat, por pedido.
-Pendente: confirmar se o "Novo projeto" funciona para mim, decidir o título "Kratos Stitch", e os itens 4 a 6 do handoff.
-```
-
----
-
-# Atualização (mesma data) — uso real no projeto `brain` e três funcionalidades novas
-
-## Estado medido
-
-| Item | Medição |
-|---|---|
-| Código | `d24826f` em `kratos/correcoes-auditoria` |
-| Testes | 103 OK; `ruff check ferramentas` 21; `oxlint` 9 |
-| CI | `success` em `29b916d` e `a6c51ed`; o de `d24826f` e o deste handoff: conferir com `gh run list` |
-| Servidor local | 127.0.0.1:8730, reiniciado com `d24826f` |
-| Gasto de API | projeto `brain`: US$ 1,30 em 2026-11-22 (15 imagens e 1 vídeo); `teste-e2e`: US$ 0,167, sem mudança |
-
-## O que o dono fez e o que foi atendido
-
-- Criou o projeto `brain` e mandou pedidos sem ninguém ouvindo. O ouvinte (`ferramentas/ouvir.sh` pelo Monitor) foi ligado
-  nesta sessão e re-armado a cada 30 minutos.
-- Gerados com ok no chat: `BRA-005` (3 imagens), `BRA-006` (6), `BRA-017` (mix, 3), `BRA-021` (3), `BRA-031` (mix com a
-  imagem e o vídeo dele, 3) e o vídeo `BRA-041` (Grok Imagine 1.5 Lite, 6 s, US$ 0,19).
-- Recusados por ele e devolvidos com `neo.py erro`: `BRA-004`, `BRA-026`, `BRA-027`, `BRA-037` (enviados sem texto).
-- Referências postas à mão no canvas a partir de `~/Downloads`: `BRA-028` (imagem dele), `BRA-029` e `BRA-030` (quadros do
-  vídeo dele).
-
-## Funcionalidades novas (ratificadas pelo dono; spec em `docs/specs/2026-11-22-comentario-pedido-e-video-de-referencia.md`)
-
-| SHA | O quê |
-|---|---|
-| `29b916d` | Servidor: vídeo próprio como referência (capa, arquivo, um quadro por segundo até 16) e limite de 200 MB |
-| `a6c51ed` | App: vídeo no canvas e no visualizador, comentário que vira pedido (`⌘↵`), anexo no comentário |
-| `d24826f` | Correções da revisão independente do `a6c51ed` |
-
-Processo: spec → pre-mortem (REFINE) → rev2 → testes e implementação → navegador → revisão independente (achou 2
-bloqueantes: vídeo válido recusado e pedido duplicado) → correção com teste e mutação. **O `d24826f` não teve segunda
-revisão independente.** No navegador foram conferidos: soltar um mp4, o player da referência, `⌘↵` com anexo, e três
-`⌘↵` seguidos criando um pedido só. Não conferidos no navegador depois do `d24826f`: o upload de vídeo e o aviso de
-arquivo não aceito.
-
-## Em aberto (além da lista anterior)
-
-1. Achados da revisão não corrigidos: `Transfer-Encoding: chunked` sem `Content-Length` (anterior a esta sessão); vários
-   vídeos soltos de uma vez sobrepõem as grades de quadros; soltar um arquivo sobre o visualizador, fora da caixa de
-   comentário, sobe pelo canvas por trás (anterior); vídeo de horas pode segurar a requisição por muitos minutos; `.mov`
-   sem cache longo.
-2. Mutações que a revisão viu sobreviver e ficaram sem teste: troca de largura e altura na rotação do vídeo enviado, e
-   webm sem duração.
-3. O número máximo de imagens de referência que o modelo aceita num pedido não foi medido; o teto de 16 quadros é escolha
-   da spec.
-4. O custo por imagem variou de US$ 0,03 a US$ 0,15 no mesmo modelo e resolução, sem causa identificada; a estimativa do
-   portão (US$ 0,14 por imagem) superestimou em quase todos os casos.
-5. No projeto `brain` ficaram rascunhos vazios (`BRA-016`, `BRA-025`, `BRA-035`, `BRA-036`) criados pelo dono.
-6. Título "Kratos Stitch": ainda sem resposta.
-
-## Prompt de retomada
-
-```
-Leia docs/handoff/2026-11-22-portao-de-gasto-e-repo-publico.md inteiro (inclusive a Atualização) em
-/Users/felipemoulin/Projetos/neo-stitch. Meça antes de confiar: git status, git log -3,
-gh run list -R fbmoulin/kratos-stitch --limit 3, python3 -m unittest discover -s tests, lsof na 8730.
-Se eu for usar o canvas: suba o servidor (uv run ferramentas/servidor.py), ligue o ouvinte da fila pelo Monitor
-(ferramentas/ouvir.sh, re-armar a cada 30 min) e rode neo.py pendentes. Geração paga só com o meu ok no chat, por
-pedido, com a estimativa. Push só para o remoto kratos.
-```
+- Specs com pre-mortem: `docs/specs/2026-11-22-fila-sem-ouvinte-e-portao-de-gasto.md` e
+  `docs/specs/2026-11-22-comentario-pedido-e-video-de-referencia.md`.
+- Prompt de retomada: `docs/handoff/2026-11-22-portao-de-gasto-e-repo-publico-prompt.md`.

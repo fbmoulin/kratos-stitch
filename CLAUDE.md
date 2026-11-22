@@ -36,3 +36,18 @@ Canvas local para explorar interfaces: imagem → vídeo → HTML vivo. **Antes 
   `base.fechar_pedido`; um gerador novo segue o mesmo contrato, senão um pedido morto fica preso.
 - No app, mudar ou apagar vários nós é um `mudarVarios` / `apagarVarios` (um pedido ao servidor, um passo de desfazer),
   não um laço de `mudar`.
+
+## Regras deste clone (Kratos Stitch, desde 2026-11-22)
+
+- Geração paga (`gerar.py`, `gerar_video.py`) só com o ok do dono no chat, por pedido, com a estimativa na pergunta. Os
+  tetos por pedido em `base.TETOS` são zero de propósito: o gerador sai com código 3 e `B.aguardar_ok` devolve o pedido à
+  fila. `--confirmado` vale para o pedido que recebeu o sim, não para os seguintes.
+- Os testes rodam com tetos folgados (`Isolado.setUp` troca `B.TETOS`); só `PortaoDeGasto` usa os zeros de verdade.
+- Push só para o remoto `kratos` (`fbmoulin/kratos-stitch`, público), no branch `correcoes-auditoria`. Nada para
+  `origin`, que é o repositório do autor: nem push, nem issue, nem PR.
+- O limite de corpo (`LIMITE_CORPO`, 200 MB) é conferido em `Handler.api` antes de ler; quem responde sem ler o corpo
+  fecha a conexão (`close_connection`), senão o que sobrou é atendido como outra requisição.
+- Referência que é vídeo: o `arquivo` do nó é a capa (jpg) e o vídeo fica em `video`; quem lê `arquivo` de uma
+  referência continua recebendo uma imagem. Não troque isso sem rever todos os leitores.
+- O servidor não recarrega Python: depois de mexer em `ferramentas/`, reinicie o processo da 8730.
+- Estado e decisões: o handoff mais novo em `docs/handoff/`.
