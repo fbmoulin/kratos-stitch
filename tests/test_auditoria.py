@@ -12,6 +12,7 @@ import contextlib
 import http.client
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -30,14 +31,20 @@ PNG = base64.b64encode(base64.b64decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')).decode()
 
 
+TETOS_DO_CLONE = dict(B.TETOS)   # os de verdade (zero: todo pedido pago para na saída 3); só o PortaoDeGasto roda com eles
+TETOS_FOLGADOS = {'imagens_por_pedido': 6, 'diario_usd': 20.0, 'video_por_pedido_usd': 2.0}
+
+
 class Isolado(unittest.TestCase):
-    """Aponta B.PROJETOS e B.FILA para uma pasta temporária."""
+    """Aponta B.PROJETOS e B.FILA para uma pasta temporária. Os projetos nascem com tetos folgados, para os testes que
+    geram sem --confirmado exercitarem o gerador e não o portão."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.raiz = Path(tmp.name)
-        for nome, valor in (('RAIZ', self.raiz), ('PROJETOS', self.raiz / 'projects'), ('FILA', self.raiz / 'fila.jsonl')):
+        for nome, valor in (('RAIZ', self.raiz), ('PROJETOS', self.raiz / 'projects'), ('FILA', self.raiz / 'fila.jsonl'),
+                            ('TETOS', dict(TETOS_FOLGADOS))):
             p = mock.patch.object(B, nome, valor)
             p.start()
             self.addCleanup(p.stop)
@@ -544,6 +551,43 @@ class EnviarSemEntradaViva(Api):
             self.assertNotIn('gerador', ped)
 
 
+class CancelarEnvio(Api):
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Loja')['slug']
+        self.url = f'/api/projetos/{self.slug}/nos'
+
+    def pedido(self, **campos):
+        with B.travado(self.slug):
+            return B.novo_no(self.slug, 'pedido', tela='LOJ-002', intencao='teste', **campos)['id']
+
+    def test_pedido_na_fila_volta_a_rascunho_e_pode_ser_reenviado(self):
+        pid = self.pedido()
+        self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/enviar')[0], 200)
+        B.aguardar_ok(self.slug, pid, 0.42)
+        status, dados = self.pedir('POST', f'{self.url}/{pid}/cancelar')
+        self.assertEqual((status, dados.get('status')), (200, 'rascunho'), dados)
+        no = B.ler_no(self.slug, pid)
+        self.assertEqual(no['status'], 'rascunho')
+        self.assertFalse({'enviado_em', 'aguarda_ok', 'erro'} & no.keys())
+        self.assertEqual(self.pedir('PATCH', f'{self.url}/{pid}', {'intencao': 'outro texto'})[0], 200)   # editável de novo
+        self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/enviar')[0], 200)
+
+    def test_pedido_que_ja_gerou_volta_a_erro_com_as_saidas(self):
+        pid = self.pedido(status='enviado', saidas=['LOJ-099'], variacoes=[{'nome': 'a', 'prompt': 'p'}])
+        self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/cancelar')[0], 200)
+        no = B.ler_no(self.slug, pid)
+        self.assertEqual((no['status'], no['erro'], no['saidas']), ('erro', 'Envio cancelado', ['LOJ-099']))
+
+    def test_so_o_que_esta_na_fila_e_cancelado(self):
+        for estado in ('rascunho', 'trabalhando', 'concluido', 'erro'):
+            pid = self.pedido(status=estado)
+            antes = B.ler_no(self.slug, pid)
+            self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/cancelar')[0], 422, estado)
+            self.assertEqual(B.ler_no(self.slug, pid), antes, estado)
+        self.assertEqual(self.pedir('POST', f'{self.url}/LOJ-002/cancelar')[0], 422)   # a tela não é pedido
+
+
 class ErrosDoServidor(Api):
     def setUp(self):
         super().setUp()
@@ -1035,6 +1079,107 @@ class Gerar(Isolado):
         self.assertEqual(nos[self.pid]['status'], 'erro')
         self.assertNotIn('gerando', nos[img['id']])
         self.assertTrue(nos[img['id']].get('erro'))
+
+
+class PortaoDeGasto(Isolado):
+    """Com os tetos do clone (zero), todo pedido pago para na saída 3 e volta para a fila à espera do ok no chat."""
+    rodar = Gerar.rodar
+
+    def setUp(self):
+        super().setUp()
+        self.chamadas = []
+        p = mock.patch.object(B, 'TETOS', dict(TETOS_DO_CLONE))
+        p.start()
+        self.addCleanup(p.stop)
+        self.slug = B.criar_projeto('Portao')['slug']
+        tela = next(n['id'] for n in B.nos(self.slug) if n['tipo'] == 'tela')
+        with B.travado(self.slug):
+            self.pid = B.novo_no(self.slug, 'pedido', tela=tela, intencao='teste')['id']
+            self.img = B.novo_no(self.slug, 'imagem', nome='base')
+            self.img['arquivo'] = f'{self.img["id"]}.png'
+            (B.pasta(self.slug) / self.img['arquivo']).write_bytes(base64.b64decode(PNG))
+            B.gravar_no(self.slug, self.img)
+            self.vid = B.novo_no(self.slug, 'pedido', tela=tela, midia='video', modelos=['m/x'], entradas=[self.img['id']])['id']
+
+    def video(self, confirmado):
+        import gerar_video
+        posts = []
+
+        def pedir(metodo, *a, **k):
+            posts.append(metodo)
+            raise RuntimeError('sem rede no teste')
+        catalogo = {'m/x': {'id': 'm/x', 'name': 'X', 'pricing_skus': {'duration_seconds': '0.01'}}}
+        saida = io.StringIO()
+        with mock.patch.object(gerar_video, 'chave', lambda: 'k'), mock.patch.object(gerar_video, 'catalogo_api', lambda key: catalogo), \
+                mock.patch.object(gerar_video, 'pedir', pedir), mock.patch.object(gerar_video.time, 'sleep', lambda s: None), \
+                contextlib.redirect_stdout(saida), contextlib.redirect_stderr(saida):
+            try:
+                gerar_video.por_pedido(self.vid, 'prompt', confirmado=confirmado)
+            except SystemExit as e:
+                return e.code, saida.getvalue(), posts
+        return 0, saida.getvalue(), posts
+
+    def test_o_clone_nasce_com_os_tetos_em_zero(self):
+        self.assertEqual((TETOS_DO_CLONE['imagens_por_pedido'], TETOS_DO_CLONE['video_por_pedido_usd']), (0, 0.0))
+        self.assertEqual(B.ler_projeto(self.slug)['tetos'], TETOS_DO_CLONE)
+
+    def test_imagem_para_na_estimativa_e_volta_para_a_fila(self):
+        neo.alterar(self.slug, self.pid, status='trabalhando')   # o `neo.py pegar`
+        codigo, saida = self.rodar('--prompt', 'a')
+        self.assertEqual(codigo, 3, saida)
+        self.assertIn('Estimativa $', saida)
+        self.assertIn('hoje $', saida)
+        self.assertEqual(self.chamadas, [])
+        ped = B.ler_no(self.slug, self.pid)
+        self.assertEqual((ped['status'], ped.get('saidas', [])), ('enviado', []))
+        self.assertGreater(ped['aguarda_ok'], 0)
+
+    def test_com_o_ok_gera_e_a_espera_some(self):
+        neo.alterar(self.slug, self.pid, status='trabalhando')
+        self.rodar('--prompt', 'a')
+        codigo, saida = self.rodar('--prompt', 'a', '--confirmado')
+        self.assertEqual(codigo, 0, saida)
+        ped = B.ler_no(self.slug, self.pid)
+        self.assertEqual((ped['status'], len(ped['saidas'])), ('concluido', 1))
+        self.assertNotIn('aguarda_ok', ped)
+
+    def test_pegar_de_novo_tira_a_espera(self):
+        neo.alterar(self.slug, self.pid, status='trabalhando')
+        self.rodar('--prompt', 'a')
+        self.assertNotIn('aguarda_ok', neo.alterar(self.slug, self.pid, status='trabalhando'))
+
+    def test_a_parada_nao_mexe_em_pedido_com_gerador_nem_em_rascunho(self):
+        neo.alterar(self.slug, self.pid, status='trabalhando')
+        with B.travado(self.slug):
+            ped = B.ler_no(self.slug, self.pid)
+            ped['gerador'] = {'pid': os.getpid(), 'desde': B.agora(), 'saidas': []}
+            B.gravar_no(self.slug, ped)
+        self.assertEqual(self.rodar('--prompt', 'a')[0], 3)
+        ped = B.ler_no(self.slug, self.pid)
+        self.assertEqual((ped['status'], 'aguarda_ok' in ped), ('trabalhando', False))
+        with B.travado(self.slug):
+            rascunho = B.novo_no(self.slug, 'pedido', tela=ped['tela'], intencao='direto')['id']
+        self.pid = rascunho
+        self.assertEqual(self.rodar('--prompt', 'a')[0], 3)
+        ped = B.ler_no(self.slug, rascunho)
+        self.assertEqual((ped['status'], 'aguarda_ok' in ped), ('rascunho', False))
+
+    def test_video_para_na_estimativa_e_volta_para_a_fila(self):
+        neo.alterar(self.slug, self.vid, status='trabalhando')
+        codigo, saida, posts = self.video(confirmado=False)
+        self.assertEqual(codigo, 3, saida)
+        self.assertIn('estimativa $', saida)
+        self.assertEqual(posts, [])
+        ped = B.ler_no(self.slug, self.vid)
+        self.assertEqual((ped['status'], ped.get('saidas', [])), ('enviado', []))
+        self.assertGreater(ped['aguarda_ok'], 0)
+
+    def test_video_com_o_ok_passa_do_portao(self):
+        neo.alterar(self.slug, self.vid, status='trabalhando')
+        self.video(confirmado=False)
+        _, saida, posts = self.video(confirmado=True)
+        self.assertEqual(posts[:1], ['POST'], saida)
+        self.assertNotIn('aguarda_ok', B.ler_no(self.slug, self.vid))
 
 
 if __name__ == '__main__':

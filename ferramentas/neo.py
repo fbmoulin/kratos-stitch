@@ -176,6 +176,7 @@ def alterar(slug: str, id_: str, **campos) -> dict:
         no.update(campos)
         if 'status' in campos:   # o pedido mudou de mão: o PID de um gerador antigo não fica nele
             no.pop('gerador', None)
+            no.pop('aguarda_ok', None)
         return B.gravar_no(slug, no)
 
 

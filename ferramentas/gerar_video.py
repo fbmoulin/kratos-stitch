@@ -11,7 +11,8 @@
 - Para cada modelo usa a duração/resolução suportada mais próxima da pedida; áudio sempre desligado quando o modelo deixa.
 - Grava <saida>/<modelo>.mp4, <saida>/<modelo>.jpg (1º quadro, se o ffmpeg existir) e <saida>/resultados.json
   (status, custo, tempo, parâmetros e erro de cada modelo). Falhas não são cobradas pelo OpenRouter.
-- Teto: se a estimativa passar de $5, sai com código 3 (rode de novo com --confirmado depois do usuário dizer sim).
+- Teto: se a estimativa passar do teto por pedido (base.TETOS, zero neste clone), sai com código 3 (rode de novo com
+  --confirmado depois do usuário dizer sim).
 """
 from __future__ import annotations
 
@@ -196,6 +197,7 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     if not confirmado and (total > tetos['video_por_pedido_usd'] or hoje + total > tetos['diario_usd']):
         print(f'BLOQUEADO: estimativa ${total:.2f} (teto por pedido ${tetos["video_por_pedido_usd"]:.2f}; hoje ${hoje:.2f} de '
               f'${tetos["diario_usd"]:.2f}). Pergunte ao usuário e rode com --confirmado.')
+        B.aguardar_ok(slug, pid, total)
         sys.exit(3)
     url_img = data_url(img)
     largura, altura = B.medidas(img) or (1280, 720)
@@ -214,6 +216,7 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
         pedido.update(status='trabalhando', saidas=pedido.get('saidas', []) + ids, variacoes=[{'nome': 'vídeo', 'prompt': prompt}],
                       iniciado_em=B.agora(), gerador={'pid': os.getpid(), 'desde': B.agora(), 'saidas': ids})
         pedido.pop('erro', None)
+        pedido.pop('aguarda_ok', None)
         B.gravar_no(slug, pedido)
 
     vazio = 'Nenhum vídeo foi gerado (veja o erro em cada nó).'
@@ -290,8 +293,8 @@ def main() -> None:
     planos = [plano(catalogo[i], a.duracao, a.resolucao) for i in ids]
     total = sum(p['estimativa'] for p in planos)
     print(f'{len(planos)} modelos · estimativa ${total:.2f}')
-    if total > 5 and not a.confirmado:
-        print('BLOQUEADO: passa de $5. Pergunte ao usuário e rode com --confirmado.')
+    if total > B.TETOS['video_por_pedido_usd'] and not a.confirmado:
+        print(f'BLOQUEADO: passa do teto por pedido (${B.TETOS["video_por_pedido_usd"]:.2f}). Pergunte ao usuário e rode com --confirmado.')
         sys.exit(3)
 
     def um(p: dict) -> dict:

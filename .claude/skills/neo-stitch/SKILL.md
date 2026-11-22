@@ -38,7 +38,7 @@ Cada evento é uma linha `{"projeto", "id", "acao"}`. Antes de qualquer coisa, r
    - **Com entradas** → todas as imagens vão como referência, na ordem das `entradas`. Diga no prompt o papel de cada uma ("IMAGE 1 is the approved layout: keep…", "IMAGE 2 is the style reference: copy its palette…"). Comentários com pin são instruções localizadas: converta (x, y) em região ("canto superior esquerdo", "painel da direita") e aplique.
 3. Rode o gerador, que cria os placeholders, gera em paralelo e pendura tudo no canvas:
    `uv run ferramentas/gerar.py <id> --json '[{"nome": "…", "prompt": "…"}, …]'`
-   - **Saída 3** = bateu num teto de custo (mais de 6 imagens no pedido ou acima do teto diário). Pergunte ao usuário no chat e rode de novo com `--confirmado` só depois do sim.
+   - **Saída 3** = bateu num teto de custo. Neste clone o teto por pedido é zero: **toda** geração para aqui, com a estimativa, e o pedido volta para a fila ("aguarda seu ok"). Pergunte ao usuário no chat, citando o pedido e o valor; com o sim, `neo.py pegar <id>` de novo e rode com `--confirmado`. O sim vale para aquele pedido, não para os seguintes. Com o não, `neo.py erro <id> "Não autorizado"`.
    - **Falha da API** → as imagens ficam com `erro` e o pedido também. Tente uma vez de novo; persistindo, devolva com `neo.py erro <id> "motivo"`.
    - **"já tem imagens sendo geradas"** → outra execução do gerador está viva nesse pedido: espere. Uma execução que morreu não bloqueia (é detectada pelo PID e o pedido é fechado sozinho). O `gerar_video.py` faz o mesmo.
 4. Não narre cada passo no chat. Uma linha basta ("JAR-120: 3 variações penduradas, $0.41").
@@ -53,7 +53,7 @@ O vídeo é **referência de movimento** de uma imagem: mostra como a tela "vive
    - Termine com "Calm pacing, no new elements, no scene change."
    - No máximo 1000 caracteres (limite do Runway). Exemplo: `projects/jarvisos/videos/JAR-043-idle/prompt-curto.txt`.
 3. Salve o prompt num arquivo do scratchpad e rode: `uv run ferramentas/gerar_video.py <id> --prompt-arquivo <txt>`. Cria um nó de vídeo por modelo (com placeholder), gera em paralelo (1–5 min cada) e baixa em `videos/<COD>.mp4` com capa em `thumbs/`. Rode em segundo plano.
-   - **Saída 3** = estimativa acima de $2 no pedido ou do teto diário. Pergunte no chat e rode com `--confirmado` só depois do sim.
+   - **Saída 3** = teto de custo, que neste clone é zero por pedido: todo vídeo para aqui com a estimativa e volta para a fila. Pergunte no chat e rode com `--confirmado` só depois do sim dado àquele pedido (o mesmo roteiro das imagens).
 4. Modelos: o app só oferece cinco (`VIDEO_NO_APP` em `base.py`): Grok Imagine 1.5 Lite (rápido e barato), **Wan 3.0 (padrão)**, Wan 3.0 Prime, Hailuo 3 e Seedance 2.5 (poderoso e caro). Os outros do catálogo (`ferramentas/dados/modelos_video.json`, com ranking e veredito do teste) só pelo modo pasta do `gerar_video.py`.
 
 ## 3. Pedidos feitos pelo chat (fallback)

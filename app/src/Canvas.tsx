@@ -453,6 +453,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
     [acao, slug, todos],
   )
   const enviar = useCallback(async (id: string) => { await acao(() => api.enviar(slug, id)) }, [acao, slug])
+  const cancelar = useCallback(async (id: string) => { await acao(() => api.cancelar(slug, id)) }, [acao, slug])
 
   const copiar = useCallback((t: string) => {
     navigator.clipboard?.writeText(t)
@@ -799,9 +800,9 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   const ctx: Ctx | null = useMemo(
     () => estado && {
       slug, estado, porId, arv, alternar, mudar, apagar: (id: string) => apagar(id), acao, abrir: setVisto, painel: () => setBriefAberto(true), novoPedido, pedidoVideo,
-      novaTela, enviar, copiar, focar, limparFoco: () => setFocar(null), pontos, raiz, abrirVista, mudarVista,
+      novaTela, enviar, cancelar, copiar, focar, limparFoco: () => setFocar(null), pontos, raiz, abrirVista, mudarVista,
     },
-    [slug, estado, porId, arv, alternar, mudar, apagar, acao, novoPedido, pedidoVideo, novaTela, enviar, copiar, focar, pontos, raiz, abrirVista, mudarVista],
+    [slug, estado, porId, arv, alternar, mudar, apagar, acao, novoPedido, pedidoVideo, novaTela, enviar, cancelar, copiar, focar, pontos, raiz, abrirVista, mudarVista],
   )
 
   if (!estado || !ctx) {
@@ -869,7 +870,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
           <span className="cresce" />
           <span className={`ouvinte ${estado.ouvinte ? 'on' : ''}`}
             title={estado.ouvinte ? 'Claude está ouvindo a fila' : 'Claude não está ouvindo — peça no chat: "ouça o Neo Stitch"'}>
-            <span className="ponto" /> Claude
+            <span className="ponto" /> {estado.ouvinte ? 'Claude' : 'Claude não está ouvindo'}
           </span>
           <span className="custo" title={`Hoje ${dinheiro(estado.custos.hoje)} · teto diário ${dinheiro(estado.projeto.tetos.diario_usd)}`}>
             {dinheiro(estado.custos.total)}

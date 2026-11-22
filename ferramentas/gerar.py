@@ -75,11 +75,14 @@ def main() -> None:
     if not a.confirmado:
         if len(variacoes) > tetos['imagens_por_pedido']:
             print(f'BLOQUEADO: {len(variacoes)} imagens (teto por pedido: {tetos["imagens_por_pedido"]}). '
-                  f'Estimativa ${estimativa:.2f}. Pergunte ao usuário e rode com --confirmado.')
+                  f'Estimativa ${estimativa:.2f} (hoje ${hoje:.2f} de ${tetos["diario_usd"]:.2f}). '
+                  'Pergunte ao usuário e rode com --confirmado.')
+            B.aguardar_ok(slug, pid, estimativa)
             sys.exit(3)
         if hoje + estimativa > tetos['diario_usd']:
             print(f'BLOQUEADO: hoje ${hoje:.2f} + ${estimativa:.2f} passa do teto diário ${tetos["diario_usd"]:.2f}. '
                   'Pergunte ao usuário e rode com --confirmado.')
+            B.aguardar_ok(slug, pid, estimativa)
             sys.exit(3)
 
     pasta = B.pasta(slug)
@@ -117,6 +120,7 @@ def main() -> None:
                        'resolucao': resolucao, 'saidas': pedido.get('saidas', []) + imagens,
                        'iniciado_em': B.agora(), 'gerador': {'pid': os.getpid(), 'desde': B.agora(), 'saidas': imagens}})
         pedido.pop('erro', None)
+        pedido.pop('aguarda_ok', None)
         B.gravar_no(slug, pedido)
 
     vazio = 'Nenhuma imagem foi gerada (veja o erro nas imagens).'

@@ -51,7 +51,8 @@ PADROES_POR_TIPO = {
     'app': {'aspecto': '9:16'},
 }
 PADROES = {'modelo': 'openai/gpt-image-2', 'aspecto': '16:9', 'resolucao': '1K', 'quantidade': 3}
-TETOS = {'imagens_por_pedido': 6, 'diario_usd': 20.0, 'video_por_pedido_usd': 2.0}
+# zero = todo pedido pago para na saída 3 com a estimativa, e o agente pergunta no chat antes do --confirmado
+TETOS = {'imagens_por_pedido': 0, 'diario_usd': 20.0, 'video_por_pedido_usd': 0.0}
 # pedidos de vídeo (image-to-video): o catálogo vem do OpenRouter e fica em ferramentas/dados/modelos_video.json
 VIDEO_PADRAO = {'modelos': ['alibaba/wan-3.0'], 'duracao': 4, 'resolucao': '720p'}
 # os que o app oferece (na ordem do menu), com a nota que aparece ao escolher; o resto do catálogo só pelo gerar_video.py
@@ -302,6 +303,16 @@ def devolver_pedido(slug: str, pid: str, motivo: str) -> None:
         pedido = ler_no(slug, pid)
         if pedido.get('status') in ('enviado', 'trabalhando'):
             pedido.update(status='erro', erro=motivo)
+            gravar_no(slug, pedido)
+
+
+def aguardar_ok(slug: str, pid: str, estimativa: float) -> None:
+    """O gerador parou no teto (saída 3) e o agente vai perguntar no chat: o pedido que ele tinha pego volta para a fila
+    com a estimativa, em vez de girar como se estivesse gerando. Um pedido com gerador registrado não é tocado."""
+    with travado(slug):
+        pedido = ler_no(slug, pid)
+        if pedido.get('status') in ('enviado', 'trabalhando') and not pedido.get('gerador'):
+            pedido.update(status='enviado', aguarda_ok=round(estimativa, 3))
             gravar_no(slug, pedido)
 
 

@@ -17,6 +17,7 @@ export type Ctx = {
   pedidoVideo: (imagem: string) => Promise<No | undefined>
   novaTela: () => Promise<unknown>
   enviar: (id: string) => Promise<void>
+  cancelar: (id: string) => Promise<void>   // tira da fila um pedido que ninguém pegou
   copiar: (texto: string) => void
   focar: string | null
   pontos: boolean  // pedidos concluídos como pontos na linha

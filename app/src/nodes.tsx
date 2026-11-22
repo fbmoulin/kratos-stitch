@@ -156,7 +156,9 @@ export const BriefNode = memo(function BriefNode({ data, selected }: NodeProps<N
       )}
       <div className="brief-acoes">
         {ocupado ? (
-          <span className="status-claude"><LoaderCircle size={14} className="gira" /> Claude</span>
+          no.status === 'enviado' && !estado.ouvinte
+            ? <span className="status fila" title={SEM_OUVINTE}><span className="pulso" /> fila · ninguém ouvindo</span>
+            : <span className="status-claude"><LoaderCircle size={14} className="gira" /> Claude</span>
         ) : dirs.length ? (
           <>
             <Botao titulo="Propor outras direções" onClick={() => acao(() => api.enviar(slug, no.id))}><RotateCw size={15} /></Botao>
@@ -345,6 +347,9 @@ function PedidoCheio({ id, data, selected }: NodeProps<NoRF>) {
             <Seletor titulo="Modelo" valor={no.modelo || ''} onChange={(v) => mudar(no.id, { modelo: v })} opcoes={modelos} />
             {fimBarra('O Claude reescreve como prompt completo')}
           </div>
+          <span className="estimativa linha" title="Estimativa pela tabela de preços; o valor final vem na confirmação, no chat">
+            ≈ {dinheiro((estado.modelos[no.modelo || estado.projeto.padroes.modelo]?.preco ?? 0.15) * qtd)}
+          </span>
         </>
       ) : <PedidoLido no={no} />}
       <Codigo id={no.id} />
@@ -356,7 +361,7 @@ function PedidoCheio({ id, data, selected }: NodeProps<NoRF>) {
 
 /** O pedido já enviado: a intenção, o status e os prompts usados (no card inteiro e no card que abre do ponto). */
 function PedidoLido({ no }: { no: No }) {
-  const { enviar } = useCanvas()
+  const { enviar, cancelar } = useCanvas()
   const [verPrompt, setVerPrompt] = useState(false)
   const prompts = (no.variacoes || []).filter((v) => v.prompt)
   return (
@@ -380,6 +385,9 @@ function PedidoLido({ no }: { no: No }) {
         )}
         {no.status === 'erro' && (
           <Botao titulo="Tentar de novo" onClick={() => enviar(no.id)}><RotateCw size={14} /></Botao>
+        )}
+        {no.status === 'enviado' && (
+          <Botao titulo="Cancelar o envio (o pedido volta a ser um rascunho)" onClick={() => cancelar(no.id)}><X size={14} /></Botao>
         )}
         <BotaoAbrir no={no} />
         <BotaoGalho no={no} />
@@ -460,7 +468,18 @@ function ModelosVideo({ no }: { no: No }) {
   )
 }
 
+const SEM_OUVINTE = 'Ninguém está ouvindo a fila. No Claude Code, aberto na pasta do projeto, peça: "ouça o canvas"'
+
 function StatusPedido({ no }: { no: No }) {
+  const { estado } = useCanvas()
+  if (no.status === 'enviado' && no.aguarda_ok != null) {
+    return (
+      <span className="status fila" title="O Claude parou antes de gastar: responda no chat para ele gerar">
+        <span className="pulso" /> aguarda seu ok · ≈ {dinheiro(no.aguarda_ok)}
+      </span>
+    )
+  }
+  if (no.status === 'enviado' && !estado.ouvinte) return <span className="status fila" title={SEM_OUVINTE}><span className="pulso" /> fila · ninguém ouvindo</span>
   if (no.status === 'enviado') return <span className="status fila" title="Na fila do Claude"><span className="pulso" /> fila</span>
   if (no.status === 'trabalhando') return <span className="status" title="O Claude está gerando"><LoaderCircle size={14} className="gira" /></span>
   if (no.status === 'erro') return <span className="status erro" title={no.erro}><TriangleAlert size={14} /> {no.erro?.slice(0, 40)}</span>

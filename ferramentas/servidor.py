@@ -28,6 +28,7 @@ Rotas (JSON; erro volta como {"erro": "…"}):
 - POST /api/projetos/<slug>/nos/<id>/restaurar         traz de volta da lixeira (o ⌘Z do app)
 - PUT  /api/projetos/<slug>/posicoes {id: {x, y}}      várias posições de uma vez (arrastar, reorganizar)
 - POST /api/projetos/<slug>/nos/<id>/enviar            pedido/brief → enviado + linha na fila.jsonl (o Claude observa)
+- POST /api/projetos/<slug>/nos/<id>/cancelar          pedido enviado que ninguém pegou → rascunho (ou erro, se já tinha saídas)
 - POST /api/projetos/<slug>/nos/<id>/comentarios {texto, pin?}  · DELETE …/comentarios/<cid>
 - POST /api/projetos/<slug>/refs  (imagem crua no corpo; cabeçalhos X-Nome, X-Pos "x,y") → nó referência
 """
@@ -479,6 +480,24 @@ def enviar(h, m, corpo):
         B.gravar_no(slug, no)
     B.enfileirar(slug, id_, acao)
     return no
+
+
+@rota('POST', f'/api/projetos/{SLUG}/nos/{ID}/cancelar')
+def cancelar(h, m, corpo):
+    """Tira da fila um pedido que ninguém pegou ainda. Sem saídas volta a rascunho (editável); um pedido que já gerou e
+    foi reenviado volta a erro, que é o estado de onde ele veio (reenviável, com as saídas no lugar)."""
+    slug, id_ = m.groups()
+    with B.travado(slug):
+        no = B.ler_no(slug, id_)
+        if no['tipo'] != 'pedido' or no.get('status') != 'enviado':
+            raise Erro('Só um pedido que está na fila pode ser cancelado.')
+        if no.get('saidas'):
+            no.update(status='erro', erro='Envio cancelado')
+        else:
+            no['status'] = 'rascunho'
+        no.pop('enviado_em', None)
+        no.pop('aguarda_ok', None)
+        return B.gravar_no(slug, no)
 
 
 @rota('POST', f'/api/projetos/{SLUG}/nos/{ID}/comentarios')

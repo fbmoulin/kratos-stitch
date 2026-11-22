@@ -98,7 +98,7 @@ O processo atual (ex.: `20-jarvisOS/prototipos`, 125 imagens) perde informação
    - **Fallback manual:** "roda os pedidos" no chat.
 4. **Intenção vs. prompt:** por padrão o Claude reescreve; o nó mostra ambos. Checkbox **literal** desliga a reescrita.
 5. **Padrões de geração:** por projeto (tipo site/app/dashboard/webapp → aspect ratio e modelo sugeridos), sobrescrevíveis por pedido. Quantidade padrão: **3**. Modelo padrão atual: `openai/gpt-image-2`, 1K.
-6. **Limite de gasto:** pedidos de até 6 imagens rodam direto; acima disso, ou se o projeto passar do teto diário (ex.: $20), o Claude pergunta antes. Painel mostra custo total e do dia (~$0,13–0,15/img no gpt-image-2).
+6. **Limite de gasto:** neste clone o teto por pedido é zero (2026-11-22): todo pedido pago para com a estimativa e o Claude pergunta antes; o mesmo se o projeto passar do teto diário (ex.: $20). No original, pedidos de até 6 imagens rodavam direto. Painel mostra custo total e do dia (~$0,13–0,15/img no gpt-image-2).
 7. **Sem chat no app.** Conversa fica no Claude Code; o app é o canal assíncrono (pedidos, comentários, aprovações).
 8. ~~**Diário:**~~ removido em 2026-11 (não era usado; os `diario.md` antigos ficam sem uso no disco). Era um `diario.md` por projeto, mantido pelo Claude, visível num painel — registra decisões ("JAR-042 aprovada porque…", "abordagem shader venceu porque…").
 

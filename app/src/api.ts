@@ -38,6 +38,7 @@ export type No = {
   variacoes?: Variacao[]
   custo?: number
   erro?: string
+  aguarda_ok?: number             // o gerador parou no teto: a estimativa que espera o ok do usuário no chat
   legado?: boolean
   midia?: 'imagem' | 'video'
   modelos?: string[]
@@ -158,6 +159,7 @@ export const api = {
   restaurarNo: (slug: string, id: string) => req<No>('POST', `${P(slug)}/nos/${id}/restaurar`),
   posicoes: (slug: string, d: Record<string, Pos>) => req('PUT', `${P(slug)}/posicoes`, d),
   enviar: (slug: string, id: string) => req<No>('POST', `${P(slug)}/nos/${id}/enviar`),
+  cancelar: (slug: string, id: string) => req<No>('POST', `${P(slug)}/nos/${id}/cancelar`),
   comentar: (slug: string, id: string, texto: string, pin: Pin | null) =>
     req<Comentario>('POST', `${P(slug)}/nos/${id}/comentarios`, { texto, pin }),
   apagarComentario: (slug: string, id: string, cid: string) => req('DELETE', `${P(slug)}/nos/${id}/comentarios/${cid}`),
