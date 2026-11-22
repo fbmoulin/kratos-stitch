@@ -7,9 +7,17 @@ Quatro itens, cada um com o que foi medido, as fontes, as opções e a recomenda
 guardado fora do git.
 A parte jurídica não é aconselhamento: é leitura das fontes primárias, com os pontos onde um advogado faria diferença.
 
+> **Atualização (2026-11-22): o item 1 está superado.** O autor do Neo Stitch é professor de um curso da ASIMOV
+> Academy, do qual o dono deste clone é aluno, e informou aos alunos que o repositório pode ser usado livremente, como
+> material disponibilizado no curso. A autorização que a seção 1 dizia faltar foi dada. Com isso o repositório
+> `kratos-stitch` passou a ser público nesta data, e o rascunho de PR guardado fora do git foi aposentado. O texto da
+> seção 1 fica abaixo como registro do que se sabia em 15/11; a recomendação dela não vale mais.
+
 ---
 
 ## 1. Licença do repositório de origem
+
+> Superado em 2026-11-22: ver a atualização no topo deste documento.
 
 ### O que existe hoje (conferido em 2026-11-15)
 
