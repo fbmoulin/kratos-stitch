@@ -1,0 +1,19 @@
+{
+ "id": "GLN-008",
+ "tipo": "imagem",
+ "criado": "2026-11-22T06:33:59",
+ "pos": null,
+ "comentarios": [],
+ "pedido": "GLN-003",
+ "nome": "Nebulosa",
+ "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. Nebulosa — airy volumetric bronze nebula branching like organic dendrites, asymmetric S-shaped galactic flow between dispersed dark pearl planets, large deep-black negative spaces",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "estado": "neutra",
+ "atualizado": "2026-11-22T06:33:59",
+ "arquivo": "images/GLN-008.jpg",
+ "thumb": "thumbs/GLN-008.jpg",
+ "largura": 1672,
+ "altura": 941,
+ "custo": 0
+}

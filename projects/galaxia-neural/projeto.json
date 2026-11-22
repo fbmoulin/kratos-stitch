@@ -1,0 +1,19 @@
+{
+ "slug": "galaxia-neural",
+ "nome": "Galáxia Neural",
+ "prefixo": "GLN",
+ "tipo": "webapp",
+ "criado": "2026-11-22T06:32:39",
+ "padroes": {
+  "modelo": "openai/gpt-image-2",
+  "aspecto": "16:9",
+  "resolucao": "1K",
+  "quantidade": 3
+ },
+ "tetos": {
+  "imagens_por_pedido": 6,
+  "diario_usd": 20.0,
+  "video_por_pedido_usd": 2.0
+ },
+ "contador": 8
+}
