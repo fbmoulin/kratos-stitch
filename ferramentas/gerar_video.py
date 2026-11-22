@@ -178,8 +178,14 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     except SystemExit as e:
         B.devolver_pedido(slug, pid, str(e.code))
         raise
-    catalogo = catalogo_api(key)
-    planos = [plano(catalogo[m], pedido.get('duracao') or 6, pedido.get('resolucao') or '720p') for m in pedido.get('modelos', []) if m in catalogo]
+    try:
+        catalogo = catalogo_api(key)
+        planos = [plano(catalogo[m], pedido.get('duracao') or 6, pedido.get('resolucao') or '720p') for m in pedido.get('modelos', []) if m in catalogo]
+    except Exception as e:  # noqa: BLE001
+        # rede fora, 401/402, resposta sem `data` ou com outro formato: o gerador ainda não foi registrado, ninguém soltaria o pedido
+        motivo = f'Não consegui ler o catálogo de vídeo do OpenRouter: {type(e).__name__}: {str(e)[:300]}'
+        B.devolver_pedido(slug, pid, motivo)
+        sys.exit(f'ERRO: {motivo}')
     if not planos:
         B.devolver_pedido(slug, pid, 'Nenhum modelo de vídeo válido no pedido.')
         sys.exit('ERRO: nenhum modelo válido no pedido.')

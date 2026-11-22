@@ -512,6 +512,37 @@ class EnviarSemEntradaViva(Api):
         self.assertEqual(ped['status'], 'erro')
         self.assertIn('imagem de entrada', ped['erro'])
 
+    def test_video_com_o_catalogo_fora_do_ar_devolve_o_pedido(self):
+        # a 1ª chamada de rede do pedido (rede fora, 401/402, resposta sem `data`) acontece antes de o gerador ser
+        # registrado: sem devolver, o pedido fica "trabalhando" para sempre e o varredor de órfãos não o enxerga
+        import gerar_video
+
+        def rede(*a, **k):
+            raise AssertionError('chegou à geração')
+        with B.travado(self.slug):   # a imagem de entrada existe no disco: o pedido passa do 1º portão e chega ao catálogo
+            img = B.ler_no(self.slug, self.a['img'])
+            img['arquivo'] = f'{img["id"]}.png'
+            (B.pasta(self.slug) / img['arquivo']).write_bytes(base64.b64decode(PNG))
+            B.gravar_no(self.slug, img)
+        for falha, trecho in ((OSError('rede fora'), 'rede fora'), (RuntimeError('OpenRouter HTTP 402: sem saldo'), 'HTTP 402'),
+                              (KeyError('data'), 'KeyError'), (ValueError('não é JSON'), 'ValueError'),
+                              (None, 'TypeError')):   # None: o catálogo responde, mas o modelo vem sem preço (o `plano` quebra)
+            pid = self.pedido(midia='video', modelos=['m/x'], entradas=[self.a['img']], status='trabalhando')
+
+            def cai(key, falha=falha):
+                if falha is None:
+                    return {'m/x': {'id': 'm/x', 'name': 'X', 'pricing_skus': {'duration_seconds': None}}}
+                raise falha
+            with mock.patch.object(gerar_video, 'chave', lambda: 'k'), mock.patch.object(gerar_video, 'catalogo_api', cai), \
+                    mock.patch.object(gerar_video, 'pedir', rede), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as saiu:
+                gerar_video.por_pedido(pid, 'prompt', confirmado=False)
+            self.assertIn('ERRO', str(saiu.exception.code))   # quem rodou o script vê a falha, não um sucesso
+            ped = B.ler_no(self.slug, pid)
+            self.assertEqual(ped['status'], 'erro', falha)
+            self.assertIn(trecho, ped['erro'])
+            self.assertNotIn('gerador', ped)
+
 
 class ErrosDoServidor(Api):
     def setUp(self):
