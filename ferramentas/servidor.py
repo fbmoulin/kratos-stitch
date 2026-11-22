@@ -30,7 +30,8 @@ Rotas (JSON; erro volta como {"erro": "…"}):
 - POST /api/projetos/<slug>/nos/<id>/enviar            pedido/brief → enviado + linha na fila.jsonl (o Claude observa)
 - POST /api/projetos/<slug>/nos/<id>/cancelar          pedido enviado que ninguém pegou → rascunho (ou erro, se já tinha saídas)
 - POST /api/projetos/<slug>/nos/<id>/comentarios {texto, pin?}  · DELETE …/comentarios/<cid>
-- POST /api/projetos/<slug>/refs  (imagem crua no corpo; cabeçalhos X-Nome, X-Pos "x,y") → nó referência
+- POST /api/projetos/<slug>/refs  (imagem ou vídeo cru no corpo; cabeçalhos X-Nome, X-Pos "x,y") → nó referência
+                                  (vídeo mp4/mov/webm: a capa, o arquivo e um nó de referência por quadro extraído)
 """
 from __future__ import annotations
 
@@ -38,8 +39,10 @@ import json
 import mimetypes
 import re
 import queue
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import Callable
@@ -71,6 +74,10 @@ CAMPOS_APP = {
 MIDIA = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.mp4', '.webm', '.bin', '.glb'}
 mimetypes.add_type('model/gltf-binary', '.glb')
 EXTENSOES = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif'}
+VIDEOS = {'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm'}
+FORMATOS_VIDEO = {'mp4', 'mov', 'matroska', 'webm'}   # o `format_name` do ffprobe: é ele que diz se o arquivo é um vídeo
+QUADROS_MAX = 16
+LIMITE_CORPO = 200 * 1024 * 1024
 
 ROTAS: list[tuple[str, re.Pattern, Callable]] = []
 
@@ -531,17 +538,20 @@ def apagar_comentario(h, m, corpo):
 def subir_ref(h, m, corpo):
     slug = m.group(1)
     tipo = (h.headers.get('Content-Type') or '').split(';')[0].strip()
-    ext = EXTENSOES.get(tipo)
+    ext = EXTENSOES.get(tipo) or VIDEOS.get(tipo)
     if not ext:
-        raise Erro('Só imagens (png, jpg, webp, gif).')
+        raise Erro('Só imagens (png, jpg, webp, gif) e vídeos (mp4, mov, webm).')
     dados = h.corpo_cru
     if not dados:
-        raise Erro('Imagem vazia.')
+        raise Erro('Arquivo vazio.')
+    B.ler_projeto(slug)   # projeto que não existe é 404 antes de qualquer trabalho
     nome = unquote(h.headers.get('X-Nome') or '').strip() or 'referência'
     pos = None
     if h.headers.get('X-Pos'):
         x, y = h.headers['X-Pos'].split(',')
         pos = {'x': round(float(x)), 'y': round(float(y))}
+    if tipo in VIDEOS:
+        return subir_video(slug, ext, dados, Path(nome).stem[:60], pos, h.headers.get('X-Tela') or None)
     with B.travado(slug):
         no = B.novo_no(slug, 'referencia', titulo=Path(nome).stem[:60], pos=pos, tela=h.headers.get('X-Tela') or None)
         arq = B.pasta(slug) / 'refs' / f'{no["id"]}.{ext}'
@@ -556,6 +566,85 @@ def subir_ref(h, m, corpo):
         if med:
             no['largura'], no['altura'] = med
         return B.gravar_no(slug, no)
+
+
+def extrair_video(origem: Path, pasta: Path) -> dict:
+    """Confere que `origem` é um vídeo e tira dele a capa (o quadro do meio) e os quadros de referência, em `pasta`.
+    {duracao, largura, altura, capa, quadros: [(segundo, arquivo)]}. Levanta Erro se não for um vídeo que dê para ler."""
+    falta = [b for b in ('ffmpeg', 'ffprobe') if not shutil.which(b)]
+    if falta:
+        raise Erro(f'Para subir um vídeo é preciso ter o ffmpeg instalado (falta: {", ".join(falta)}).')
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries',
+                        'format=format_name,duration:stream=codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
+                        '-of', 'json', str(origem)], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=60)
+    try:
+        info = json.loads(r.stdout)
+    except ValueError:
+        info = {}
+    formato = info.get('format') or {}
+    faixa = next((f for f in info.get('streams') or [] if f.get('codec_type') == 'video' and f.get('width') and f.get('height')
+                  and not (f.get('disposition') or {}).get('attached_pic')), None)
+    # uma imagem também sai do ffprobe com uma faixa "de vídeo": o que a separa é o formato do contêiner
+    if not faixa or not FORMATOS_VIDEO & set((formato.get('format_name') or '').split(',')):
+        raise Erro('O arquivo não é um vídeo mp4, mov ou webm que dê para ler.')
+    try:
+        dur = float(formato.get('duration'))
+    except (TypeError, ValueError):
+        dur = 0.0
+    if dur <= 0:
+        raise Erro('Não consegui ler a duração do vídeo. Converta para mp4 e tente de novo.')
+    largura, altura = faixa['width'], faixa['height']
+    giro = next((d['rotation'] for d in faixa.get('side_data_list') or [] if isinstance(d.get('rotation'), (int, float))), 0)
+    if abs(giro) % 180 == 90:
+        largura, altura = altura, largura
+
+    def quadro(t: float, destino: Path) -> Path:
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', f'{t:.3f}', '-i', str(origem), '-frames:v', '1', '-q:v', '2', str(destino)],
+                       capture_output=True, check=False, stdin=subprocess.DEVNULL, timeout=120)
+        if not destino.exists() or not destino.stat().st_size:
+            raise Erro('Não consegui extrair os quadros do vídeo.')
+        return destino
+    n = min(QUADROS_MAX, max(1, round(dur)))
+    tempos = [round(dur * i / (n + 1), 2) for i in range(1, n + 1)]   # nunca o último instante: ali o ffmpeg não devolve quadro
+    return {'duracao': round(dur, 2), 'largura': largura, 'altura': altura, 'capa': quadro(dur / 2, pasta / 'capa.jpg'),
+            'quadros': [(t, quadro(t, pasta / f'q{i:02d}.jpg')) for i, t in enumerate(tempos)]}
+
+
+def subir_video(slug: str, ext: str, dados: bytes, titulo: str, pos: dict | None, tela: str | None) -> dict:
+    """O vídeo de referência: um nó `referencia` cujo `arquivo` é a capa (quem lê referências segue lendo uma imagem) e
+    que guarda `video`, mais um nó de referência por quadro. A extração roda fora da trava (leva segundos e a trava
+    seguraria toda escrita no projeto); os nós só nascem depois de tudo extraído."""
+    with tempfile.TemporaryDirectory() as tmp:
+        origem = Path(tmp) / f'origem.{ext}'
+        origem.write_bytes(dados)
+        v = extrair_video(origem, Path(tmp))
+        razao = v['largura'] / v['altura']
+        passo_x = (720 if razao >= 1 else 480) + 40     # o cartão de uma referência no canvas (`medidaImagem`, layout.ts)
+        passo_y = round((720 if razao >= 1 else 480) / razao) + 49 + 40
+        with B.travado(slug):
+            refs = B.pasta(slug) / 'refs'
+            refs.mkdir(parents=True, exist_ok=True)
+
+            def no_com(arquivo: Path, **campos) -> dict:
+                no = B.novo_no(slug, 'referencia', tela=tela, largura=v['largura'], altura=v['altura'], **campos)
+                shutil.move(arquivo, refs / f'{no["id"]}.jpg')
+                no['arquivo'] = f'refs/{no["id"]}.jpg'
+                try:
+                    B.miniatura(refs / f'{no["id"]}.jpg', B.pasta(slug) / 'thumbs' / f'{no["id"]}.jpg')
+                    no['thumb'] = f'thumbs/{no["id"]}.jpg'
+                except Exception:  # noqa: BLE001, S110
+                    pass   # sem miniatura o canvas usa o próprio arquivo
+                return no
+            video = no_com(v['capa'], titulo=titulo, pos=pos, duracao=v['duracao'])
+            shutil.move(origem, refs / f'{video["id"]}.{ext}')
+            video['video'] = f'refs/{video["id"]}.{ext}'
+            ids = []
+            for i, (t, arq) in enumerate(v['quadros']):
+                onde = pos and {'x': pos['x'] + passo_x * (1 + i % 4), 'y': pos['y'] + passo_y * (i // 4)}
+                q = no_com(arq, titulo=f'{titulo[:50]} · {int(t) // 60}:{int(t) % 60:02d}', pos=onde, de=video['id'], t=t)
+                ids.append(B.gravar_no(slug, q)['id'])
+            video['quadros'] = ids
+            return B.gravar_no(slug, video)
 
 
 # ---------- HTTP ----------
@@ -588,6 +677,11 @@ class Handler(SimpleHTTPRequestHandler):
         url = urlparse(self.path)
         self.query = parse_qs(url.query)
         n = int(self.headers.get('Content-Length') or 0)
+        if n > LIMITE_CORPO:
+            # sem ler o corpo, a conexão tem de fechar: o que sobrasse nela seria atendido como outra requisição
+            self.close_connection = True
+            self.responder(413, {'erro': f'Arquivo grande demais (o limite é {LIMITE_CORPO // (1024 * 1024)} MB).'})
+            return
         self.corpo_cru = self.rfile.read(n) if n else b''
         for met, padrao, fn in ROTAS:
             m = padrao.match(unquote(url.path))

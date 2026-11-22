@@ -615,6 +615,123 @@ class CancelarEnvio(Api):
         self.assertNotIn('aguarda_ok', B.ler_no(self.slug, pid))
 
 
+@unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'precisa do ffmpeg')
+class VideoDeReferencia(Api):
+    """Subir um vídeo próprio no canvas: o nó do vídeo (com a capa) e um nó de referência por quadro."""
+
+    def setUp(self):
+        super().setUp()
+        self.slug = B.criar_projeto('Loja')['slug']
+        self.url = f'/api/projetos/{self.slug}/refs'
+
+    def clipe(self, segundos, nome='clipe.mp4'):
+        import subprocess
+        arq = self.raiz / nome
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', f'testsrc=s=160x90:r=10:d={segundos}', '-c:v', 'mpeg4', str(arq)], check=True)
+        return arq.read_bytes()
+
+    def subir(self, dados, tipo, **cabecalhos):
+        c = http.client.HTTPConnection('127.0.0.1', self.porta, timeout=120)
+        c.request('POST', self.url, body=dados, headers={'Content-Type': tipo, **cabecalhos})
+        r = c.getresponse()
+        resposta = json.loads(r.read() or b'{}')
+        c.close()
+        return r.status, resposta
+
+    def refs(self):
+        return [n for n in B.nos(self.slug) if n['tipo'] == 'referencia']
+
+    def arquivos(self):
+        d = B.pasta(self.slug) / 'refs'
+        return sorted(f.name for f in d.iterdir()) if d.exists() else []
+
+    def test_imagem_continua_subindo(self):
+        status, no = self.subir(base64.b64decode(PNG), 'image/png', **{'X-Nome': 'tela.png', 'X-Pos': '10,20'})
+        self.assertEqual((status, no['tipo'], no['titulo'], no['pos']), (200, 'referencia', 'tela', {'x': 10, 'y': 20}), no)
+        self.assertTrue((B.pasta(self.slug) / no['arquivo']).exists())
+        self.assertNotIn('video', no)
+
+    def test_video_vira_capa_arquivo_e_um_quadro_por_segundo(self):
+        status, video = self.subir(self.clipe(10), 'video/mp4', **{'X-Nome': 'demo.mp4', 'X-Pos': '100,200'})
+        self.assertEqual(status, 200, video)
+        pasta = B.pasta(self.slug)
+        self.assertEqual((video['titulo'], video['duracao'], video['largura'], video['altura']), ('demo', 10.0, 160, 90))
+        self.assertTrue(video['arquivo'].endswith('.jpg') and (pasta / video['arquivo']).stat().st_size)
+        self.assertTrue(video['video'].endswith('.mp4') and (pasta / video['video']).stat().st_size)
+        quadros = [B.ler_no(self.slug, i) for i in video['quadros']]
+        self.assertEqual(len(quadros), 10)
+        tempos = [q['t'] for q in quadros]
+        self.assertEqual(tempos, sorted(set(tempos)))
+        self.assertTrue(0 < tempos[0] and tempos[-1] < 10, tempos)
+        for q in quadros:
+            self.assertEqual((q['tipo'], q['de'], q['largura'], q['altura']), ('referencia', video['id'], 160, 90))
+            self.assertTrue((pasta / q['arquivo']).stat().st_size)
+            self.assertNotIn('video', q)
+        self.assertEqual(quadros[3]['titulo'], 'demo · 0:03')
+        self.assertEqual(len({(q['pos']['x'], q['pos']['y']) for q in quadros} | {(100, 200)}), 11)   # ninguém em cima de ninguém
+        self.assertEqual(len(self.refs()), 11)
+        self.assertEqual(self.pedir('POST', f'/api/projetos/{self.slug}/nos', {'tipo': 'pedido', 'tela': 'LOJ-002', 'entradas': [video['id'], quadros[0]['id']]})[0], 200)
+
+    def test_o_numero_de_quadros_acompanha_a_duracao_ate_o_teto(self):
+        for segundos, esperado in ((2, 2), (40, 16)):
+            status, video = self.subir(self.clipe(segundos), 'video/mp4')
+            self.assertEqual((status, len(video.get('quadros', []))), (200, esperado), segundos)
+            self.assertTrue(all(B.ler_no(self.slug, i)['t'] < segundos for i in video['quadros']))
+
+    def test_imagem_ou_lixo_com_tipo_de_video_nao_entra(self):
+        import subprocess
+        gif = self.raiz / 'animado.gif'   # tem faixa "de vídeo" e duração: só o formato do contêiner o separa de um vídeo
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=64x36:r=5:d=2', str(gif)], check=True)
+        for dados in (gif.read_bytes(), base64.b64decode(PNG), b'isto nao e um video' * 50):
+            status, resposta = self.subir(dados, 'video/mp4')
+            self.assertEqual(status, 422, resposta)
+            self.assertIn('vídeo', resposta['erro'])
+        self.assertEqual((self.refs(), self.arquivos()), ([], []))
+
+    def test_sem_ffmpeg_avisa_e_nao_cria_nada(self):
+        dados = self.clipe(2)
+        with mock.patch.object(servidor.shutil, 'which', lambda b: None):
+            status, resposta = self.subir(dados, 'video/mp4')
+        self.assertEqual(status, 422, resposta)
+        self.assertIn('ffmpeg', resposta['erro'])
+        self.assertEqual((self.refs(), self.arquivos()), ([], []))
+
+    def test_quadro_que_falha_nao_deixa_nada_pela_metade(self):
+        import subprocess
+        de_verdade = subprocess.run
+        chamadas = []
+
+        def falha_no_terceiro(cmd, *a, **k):
+            if cmd[0] == 'ffmpeg':
+                chamadas.append(cmd)
+                if len(chamadas) == 3:
+                    return subprocess.CompletedProcess(cmd, 234, b'', b'')
+            return de_verdade(cmd, *a, **k)
+        dados = self.clipe(4)
+        with mock.patch.object(servidor.subprocess, 'run', falha_no_terceiro):
+            status, resposta = self.subir(dados, 'video/mp4')
+        self.assertEqual(status, 422, resposta)
+        self.assertEqual((self.refs(), self.arquivos()), ([], []))
+
+    def test_corpo_acima_do_limite_e_recusado_sem_ser_lido(self):
+        import socket
+        contrabando = json.dumps({'nome': 'Contrabando'}).encode()
+        segundo = (b'POST /api/projetos HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n'
+                   + f'Content-Length: {len(contrabando)}\r\n\r\n'.encode() + contrabando)
+        with mock.patch.object(servidor, 'LIMITE_CORPO', 64):
+            s = socket.create_connection(('127.0.0.1', self.porta), timeout=10)
+            s.sendall(f'POST {self.url} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: video/mp4\r\nContent-Length: {len(segundo)}\r\n\r\n'.encode() + segundo)
+            resposta = b''
+            with contextlib.suppress(OSError):
+                while bloco := s.recv(65536):
+                    resposta += bloco
+            s.close()
+        self.assertTrue(resposta.startswith(b'HTTP/1.0 413') or resposta.startswith(b'HTTP/1.1 413'), resposta[:80])
+        self.assertEqual(resposta.count(b'HTTP/1.'), 1, resposta)   # o corpo que sobrou não foi atendido como outro pedido
+        self.assertEqual(B.projetos(), [self.slug])
+        self.assertEqual(self.refs(), [])
+
+
 class ErrosDoServidor(Api):
     def setUp(self):
         super().setUp()
