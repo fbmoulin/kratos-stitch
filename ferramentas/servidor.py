@@ -477,6 +477,8 @@ def enviar(h, m, corpo):
         no.pop('erro', None)
         no.pop('gerador', None)
         no.pop('entradas_antes', None)   # enviado, as entradas travam: não há mais o que devolver
+        no.pop('aguarda_ok', None)       # a espera era do envio anterior (ficou num pedido devolvido como erro)
+        no.pop('cancelado_em', None)
         B.gravar_no(slug, no)
     B.enfileirar(slug, id_, acao)
     return no
@@ -497,6 +499,7 @@ def cancelar(h, m, corpo):
             no['status'] = 'rascunho'
         no.pop('enviado_em', None)
         no.pop('aguarda_ok', None)
+        no['cancelado_em'] = B.agora()   # a linha dele continua na fila.jsonl: o `neo.py pegar` recusa até um novo envio
         return B.gravar_no(slug, no)
 
 

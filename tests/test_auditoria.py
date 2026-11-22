@@ -586,6 +586,33 @@ class CancelarEnvio(Api):
             self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/cancelar')[0], 422, estado)
             self.assertEqual(B.ler_no(self.slug, pid), antes, estado)
         self.assertEqual(self.pedir('POST', f'{self.url}/LOJ-002/cancelar')[0], 422)   # a tela não é pedido
+        self.assertEqual(self.pedir('POST', f'{self.url}/LOJ-001/enviar')[0], 200)     # o brief enviado também não
+        self.assertEqual(self.pedir('POST', f'{self.url}/LOJ-001/cancelar')[0], 422)
+        self.assertEqual(B.ler_no(self.slug, 'LOJ-001')['status'], 'enviado')
+
+    def test_o_agente_nao_pega_um_envio_cancelado(self):
+        # a linha do envio continua na fila.jsonl: sem a recusa, o agente pegava o rascunho que o usuário está editando
+        pid = self.pedido()
+        self.pedir('POST', f'{self.url}/{pid}/enviar')
+        self.pedir('POST', f'{self.url}/{pid}/cancelar')
+        with mock.patch.object(sys, 'argv', ['neo.py', 'pegar', pid]), contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as saiu:
+            neo.main()
+        self.assertIn('cancelado', str(saiu.exception.code))
+        self.assertEqual(B.ler_no(self.slug, pid)['status'], 'rascunho')
+        self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/enviar')[0], 200)   # enviado de novo, volta a poder ser pego
+        with mock.patch.object(sys, 'argv', ['neo.py', 'pegar', pid]), contextlib.redirect_stdout(io.StringIO()):
+            neo.main()
+        self.assertEqual(B.ler_no(self.slug, pid)['status'], 'trabalhando')
+
+    def test_reenviar_tira_a_espera_do_envio_anterior(self):
+        pid = self.pedido()
+        self.pedir('POST', f'{self.url}/{pid}/enviar')
+        B.aguardar_ok(self.slug, pid, 0.42)
+        self.assertEqual(B.ler_no(self.slug, pid)['aguarda_ok'], 0.42)
+        B.devolver_pedido(self.slug, pid, 'sem chave')   # o gerador falhou depois do ok: o pedido volta como erro
+        self.assertEqual(self.pedir('POST', f'{self.url}/{pid}/enviar')[0], 200)
+        self.assertNotIn('aguarda_ok', B.ler_no(self.slug, pid))
 
 
 class ErrosDoServidor(Api):
@@ -1112,14 +1139,14 @@ class PortaoDeGasto(Isolado):
             B.gravar_no(self.slug, self.img)
             self.vid = B.novo_no(self.slug, 'pedido', tela=tela, midia='video', modelos=['m/x'], entradas=[self.img['id']])['id']
 
-    def video(self, confirmado):
+    def video(self, confirmado, preco='0.01'):
         import gerar_video
         posts = []
 
         def pedir(metodo, *a, **k):
             posts.append(metodo)
             raise RuntimeError('sem rede no teste')
-        catalogo = {'m/x': {'id': 'm/x', 'name': 'X', 'pricing_skus': {'duration_seconds': '0.01'}}}
+        catalogo = {'m/x': {'id': 'm/x', 'name': 'X', 'pricing_skus': {'duration_seconds': preco}}}
         saida = io.StringIO()
         with mock.patch.object(gerar_video, 'chave', lambda: 'k'), mock.patch.object(gerar_video, 'catalogo_api', lambda key: catalogo), \
                 mock.patch.object(gerar_video, 'pedir', pedir), mock.patch.object(gerar_video.time, 'sleep', lambda s: None), \
@@ -1184,6 +1211,44 @@ class PortaoDeGasto(Isolado):
         ped = B.ler_no(self.slug, self.vid)
         self.assertEqual((ped['status'], ped.get('saidas', [])), ('enviado', []))
         self.assertGreater(ped['aguarda_ok'], 0)
+
+    def test_video_sem_preco_no_catalogo_tambem_para(self):
+        codigo, saida, posts = self.video(confirmado=False, preco='0')
+        self.assertEqual((codigo, posts), (3, []), saida)
+
+    def test_pedido_que_ninguem_pegou_tambem_fica_esperando(self):
+        neo.alterar(self.slug, self.pid, status='enviado')
+        self.assertEqual(self.rodar('--prompt', 'a')[0], 3)
+        ped = B.ler_no(self.slug, self.pid)
+        self.assertEqual(ped['status'], 'enviado')
+        self.assertGreater(ped['aguarda_ok'], 0)
+
+    def test_o_teto_diario_tambem_devolve_o_pedido_a_fila(self):
+        proj = B.ler_projeto(self.slug)
+        proj['tetos'] = {'imagens_por_pedido': 6, 'diario_usd': 0.0, 'video_por_pedido_usd': 0.0}
+        B.gravar_projeto(self.slug, proj)
+        neo.alterar(self.slug, self.pid, status='trabalhando')
+        codigo, saida = self.rodar('--prompt', 'a')
+        self.assertEqual(codigo, 3, saida)
+        self.assertIn('teto diário', saida)
+        self.assertGreater(B.ler_no(self.slug, self.pid)['aguarda_ok'], 0)
+
+    def test_video_avulso_usa_o_teto_do_clone(self):
+        import gerar_video
+        posts = []
+
+        def pedir(metodo, *a, **k):
+            posts.append(metodo)
+            raise RuntimeError('sem rede no teste')
+        catalogo = {'m/x': {'id': 'm/x', 'name': 'X', 'pricing_skus': {'duration_seconds': '0.01'}}}
+        args = ['gerar_video.py', '--imagem', str(B.pasta(self.slug) / self.img['arquivo']), '--saida', str(self.raiz / 'avulso'),
+                '--prompt', 'p', '--modelos', 'm/x']
+        saida = io.StringIO()
+        with mock.patch.object(gerar_video, 'chave', lambda: 'k'), mock.patch.object(gerar_video, 'catalogo_api', lambda key: catalogo), \
+                mock.patch.object(gerar_video, 'pedir', pedir), mock.patch.object(sys, 'argv', args), \
+                contextlib.redirect_stdout(saida), contextlib.redirect_stderr(saida), self.assertRaises(SystemExit) as saiu:
+            gerar_video.main()
+        self.assertEqual((saiu.exception.code, posts), (3, []), saida.getvalue())
 
     def test_video_com_o_ok_passa_do_portao(self):
         neo.alterar(self.slug, self.vid, status='trabalhando')

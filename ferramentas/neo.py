@@ -182,6 +182,8 @@ def alterar(slug: str, id_: str, **campos) -> dict:
 
 def cmd_pegar(a):
     slug, id_ = B.resolver_codigo(a.codigo)
+    if B.ler_no(slug, id_).get('cancelado_em'):   # a linha antiga ainda está na fila, mas o usuário desistiu do envio
+        sys.exit(f'ERRO: o envio de {id_} foi cancelado pelo usuário; ele precisa enviar de novo.')
     alterar(slug, id_, status='trabalhando')
     print(f'{id_} trabalhando')
 

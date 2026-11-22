@@ -143,7 +143,7 @@ echo 'OPENROUTER_API_KEY=sk-or-...' > .env
 uv run ferramentas/servidor.py
 ```
 
-Abra o Claude Code na pasta do projeto e diga **"ouça o canvas"**. Ele liga o Monitor da fila e o ponto verde "Claude" acende no topo do app. A partir daí, cada pedido enviado no canvas é atendido na hora.
+Abra o Claude Code na pasta do projeto e diga **"ouça o canvas"**. Ele liga o Monitor da fila e o ponto verde "Claude" acende no topo do app. A partir daí, cada pedido enviado no canvas é atendido na hora; neste clone, o Claude para antes de gastar, mostra a estimativa e espera o seu ok no chat.
 
 Para mexer no app com recarga instantânea: `npm --prefix app run dev` (porta 5173, repassa a API para a 8730).
 

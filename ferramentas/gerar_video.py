@@ -198,7 +198,8 @@ def por_pedido(codigo: str, prompt: str, confirmado: bool) -> None:
     tetos = {**B.TETOS, **B.ler_projeto(slug).get('tetos', {})}
     hoje = B.custos(slug)['hoje']
     print(f'{pid}: {len(planos)} vídeos · estimativa ${total:.2f}')
-    if not confirmado and (total > tetos['video_por_pedido_usd'] or hoje + total > tetos['diario_usd']):
+    # `>=`: com o teto em zero até a estimativa $0.00 para (modelo sem preço no catálogo não é modelo de graça)
+    if not confirmado and (total >= tetos['video_por_pedido_usd'] or hoje + total > tetos['diario_usd']):
         print(f'BLOQUEADO: estimativa ${total:.2f} (teto por pedido ${tetos["video_por_pedido_usd"]:.2f}; hoje ${hoje:.2f} de '
               f'${tetos["diario_usd"]:.2f}). Pergunte ao usuário e rode com --confirmado.')
         B.aguardar_ok(slug, pid, total)
@@ -297,8 +298,8 @@ def main() -> None:
     planos = [plano(catalogo[i], a.duracao, a.resolucao) for i in ids]
     total = sum(p['estimativa'] for p in planos)
     print(f'{len(planos)} modelos · estimativa ${total:.2f}')
-    if total > B.TETOS['video_por_pedido_usd'] and not a.confirmado:
-        print(f'BLOQUEADO: passa do teto por pedido (${B.TETOS["video_por_pedido_usd"]:.2f}). Pergunte ao usuário e rode com --confirmado.')
+    if total >= B.TETOS['video_por_pedido_usd'] and not a.confirmado:
+        print(f'BLOQUEADO: chega ao teto por pedido (${B.TETOS["video_por_pedido_usd"]:.2f}). Pergunte ao usuário e rode com --confirmado.')
         sys.exit(3)
 
     def um(p: dict) -> dict:

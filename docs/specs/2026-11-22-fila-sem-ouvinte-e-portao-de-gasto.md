@@ -23,7 +23,7 @@ quatro itens são os mesmos, mudou o detalhe de como cada um é feito.
 ### M1 — Tetos em zero por padrão, e o pedido bloqueado volta para a fila
 - `base.TETOS` passa a `imagens_por_pedido: 0` e `video_por_pedido_usd: 0.0`; `diario_usd` fica em 20. Todo pedido pago
   sai com código 3 e a estimativa. O `teste-e2e` (dado, fora do git) recebe os mesmos zeros por PATCH.
-- Ao sair com 3, o gerador devolve o pedido à fila: se ele está `enviado` ou `trabalhando` sem gerador vivo, fica
+- Ao sair com 3, o gerador devolve o pedido à fila: se ele está `enviado` ou `trabalhando` sem `gerador` registrado, fica
   `enviado` com `aguarda_ok: <estimativa>`. Assim ele não gira como se estivesse gerando e pode ser cancelado (M3). O
   campo sai quando a geração começa, no cancelar e no reenviar.
 - A mensagem de bloqueio de imagem passa a trazer o gasto do dia (com teto zero a checagem diária não é mais alcançada
@@ -50,9 +50,17 @@ Rota `POST /api/projetos/<slug>/nos/<id>/cancelar`, sob a trava, só para pedido
 
 Qualquer outro estado ou tipo devolve 422 sem mudar o nó. No app, um botão ao lado do selo da fila.
 
-Não entra: marcar o pedido cancelado para o `neo.py pegar` recusar. A linha antiga continua na `fila.jsonl`, e um agente
-que já a recebeu pode pegar o pedido cancelado; com o M1 ele para na saída 3 e pergunta, e a resposta é do dono. Também
-ficam fora: cancelar o brief e cancelar pedido `trabalhando`.
+A linha antiga continua na `fila.jsonl`. Para um agente que já a recebeu não pegar o pedido e travar de novo o rascunho
+que o dono está editando, o cancelar grava `cancelado_em`, o `neo.py pegar` recusa o pedido que tem o campo, e o enviar o
+tira (entrou depois da revisão do código). Ficam fora: cancelar o brief e cancelar pedido `trabalhando`.
+
+## Limites conhecidos (revisão independente do `d384d7a`)
+
+- O portão lê os tetos do `projeto.json`. Um projeto criado antes desta mudança, ou com tetos alterados por PATCH,
+  mantém os seus; só o `teste-e2e` existia e foi zerado.
+- `neo.py pegar` num pedido que está gerando apaga o `gerador`, e a saída 3 seguinte o devolve à fila com placeholders
+  ainda girando. Anterior a esta mudança no que toca ao `pegar`.
+- Pedido `trabalhando` com gerador morto não volta à fila na saída 3: fica para o varredor de órfãos.
 
 ### M4 — Estimativa no rascunho de imagem
 `≈ $ preço do modelo × quantidade`, no lugar e formato da estimativa do vídeo; modelo fora da tabela usa 0,15, como o

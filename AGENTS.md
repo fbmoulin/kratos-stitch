@@ -66,6 +66,7 @@ Normalmente o usuário cria o pedido no app e o envia; a fila avisa o agente. Pa
 
 ```bash
 # imagens: um pedido que sai da JAR-042, depois a geração (cada --prompt vira uma imagem)
+# neste clone toda geração sai com código 3 e a estimativa: pergunte ao usuário e repita com --confirmado depois do sim
 uv run ferramentas/neo.py pedido jarvisos --entradas JAR-042 --intencao "mais neon" --quantidade 3
 uv run ferramentas/gerar.py JAR-0XX --prompt "…" --prompt "…" --prompt "…"
 
