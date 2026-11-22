@@ -1,6 +1,6 @@
-import { ArrowUp, ChevronLeft, ChevronRight, Clapperboard, Focus, GitBranchPlus, Pin as Alfinete, PinOff, Pause, Play, Quote, Trash2, X } from 'lucide-react'
+import { ArrowUp, ChevronLeft, ChevronRight, Clapperboard, Focus, GitBranchPlus, Pin as Alfinete, PinOff, Pause, Play, Quote, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, arquivoUrl, dinheiro, rotaVista, type No, type Pin } from './api'
+import { api, arquivoUrl, dinheiro, ehMidia, rotaVista, type No, type Pin } from './api'
 import { useCanvas } from './ctx'
 import { ESTADOS, alternarEstado, estadoDaTecla } from './estados'
 
@@ -10,6 +10,9 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
   const no = porId.get(id) as No
   const [pin, setPin] = useState<Pin | null>(null)
   const ehVideo = no.tipo === 'video'
+  const temPlayer = ehVideo || !!no.video   // o vídeo gerado e a referência que é um vídeo próprio
+  const aceitaPedido = no.tipo === 'imagem' || no.tipo === 'referencia'
+  const [anexos, setAnexos] = useState<No[]>([])   // arquivos colados ou soltos na caixa de comentário, já no canvas como referências
   const videoRef = useRef<HTMLVideoElement>(null)
   const [tempo, setTempo] = useState(0)
   const [rodando, setRodando] = useState(true)
@@ -60,7 +63,7 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
   const comentarios = no.comentarios || []
   const pins = comentarios.filter((c) => c.pin)
 
-  useEffect(() => { setPin(null); setTexto(''); setFoco(null) }, [id])
+  useEffect(() => { setPin(null); setTexto(''); setFoco(null); setAnexos([]) }, [id])
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
@@ -84,9 +87,30 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
 
   const enviarComentario = async () => {
     if (!texto.trim()) return
-    if ((await acao(() => api.comentar(slug, no.id, texto.trim(), pin))) === undefined) return  // falhou: o rascunho fica
+    const comAnexos = anexos.length ? `${texto.trim()} [anexos: ${anexos.map((a) => a.id).join(', ')}]` : texto.trim()
+    if ((await acao(() => api.comentar(slug, no.id, comAnexos, pin))) === undefined) return  // falhou: o rascunho fica
     setTexto('')
     setPin(null)
+    setAnexos([])
+  }
+  // o comentário como pedido ao Claude: o rascunho (esta imagem e os anexos como entradas, o texto como intenção), o
+  // comentário e só então o envio, para o Claude já achar tudo quando a linha chega à fila
+  const enviarPedido = async () => {
+    if (!texto.trim() || !aceitaPedido) return
+    const tela = projeto.nos.find((n) => n.tipo === 'tela')?.id
+    const p = await acao(() => api.criarNo(slug, { tipo: 'pedido', tela, entradas: [no.id, ...anexos.map((a) => a.id)], intencao: texto.trim() }))
+    if (!p) return
+    await acao(() => api.comentar(slug, no.id, `${texto.trim()} [pedido ${p.id}]`, pin))
+    if ((await acao(() => api.enviar(slug, p.id))) === undefined) return
+    setTexto('')
+    setPin(null)
+    setAnexos([])
+  }
+  const anexar = async (arquivos: File[]) => {
+    for (const f of arquivos.filter(ehMidia)) {
+      const r = await acao(() => api.subirRef(slug, f, f.name || 'colada'))
+      if (r) setAnexos((a) => [...a, r])
+    }
   }
 
   const clicarImagem = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -94,7 +118,7 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
     const r = e.currentTarget.getBoundingClientRect()
     const p: Pin = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }
     // no vídeo, o ponto guarda o segundo e pausa ali
-    if (ehVideo && videoRef.current) { videoRef.current.pause(); p.t = Math.round(videoRef.current.currentTime * 100) / 100 }
+    if (temPlayer && videoRef.current) { videoRef.current.pause(); p.t = Math.round(videoRef.current.currentTime * 100) / 100 }
     setPin(p)
     requestAnimationFrame(() => entrada.current?.focus())
   }
@@ -105,14 +129,14 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
         <div className="palco-img">
         {i > 0 && <button type="button" className="nav esq" title="Anterior (←)" onClick={(e) => { e.stopPropagation(); navegar(irmas[i - 1]) }}><ChevronLeft size={22} /></button>}
         <div className="viewer-img" onClick={clicarImagem} title="Clique para comentar num ponto · clique fora para voltar ao canvas">
-          {ehVideo ? (
-            <video ref={videoRef} src={arquivoUrl(slug, no.arquivo)} autoPlay muted loop playsInline
+          {temPlayer ? (
+            <video ref={videoRef} src={arquivoUrl(slug, no.video || no.arquivo)} autoPlay muted loop playsInline
               onTimeUpdate={(e) => setTempo(e.currentTarget.currentTime)}
               onLoadedMetadata={(e) => setTotal(e.currentTarget.duration || 0)} onPlay={() => setRodando(true)} onPause={() => setRodando(false)} />
           ) : (
             <img src={arquivoUrl(slug, no.arquivo)} alt={no.nome || no.titulo || no.id} draggable={false} />
           )}
-          {pins.filter((c) => !ehVideo || c.pin?.t === undefined || Math.abs((c.pin.t ?? 0) - tempo) < 0.8 || foco === c.id).map((c) => (
+          {pins.filter((c) => !temPlayer || c.pin?.t === undefined || Math.abs((c.pin.t ?? 0) - tempo) < 0.8 || foco === c.id).map((c) => (
             <span key={c.id} className={`pin ${c.autor} ${foco === c.id ? 'foco' : ''}`} style={{ left: `${c.pin!.x * 100}%`, top: `${c.pin!.y * 100}%` }}
               onMouseEnter={() => setFoco(c.id)} onMouseLeave={() => setFoco(null)}>
               <span>{comentarios.indexOf(c) + 1}</span>
@@ -120,7 +144,7 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
           ))}
           {pin && <span className="pin novo" style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}><span>+</span></span>}
         </div>
-        {ehVideo && (
+        {temPlayer && (
           // controle mínimo: tocar/pausar, tempo e a linha do tempo (os pontos comentados aparecem nela)
           <div className="controle-video" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="ico" title={rodando ? 'Pausar (espaço)' : 'Tocar (espaço)'}
@@ -256,11 +280,26 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
           ))}
         </div>
 
-        <div className={`comentar ${pin ? 'com-pin' : ''}`}>
+        <div className={`comentar ${pin ? 'com-pin' : ''}`} onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); anexar([...e.dataTransfer.files]) }}>
+          {anexos.map((a) => (
+            <button key={a.id} type="button" className="pin-chip" title={`Anexo: ${a.titulo || a.id} (clique para tirar do comentário; a referência fica no canvas)`}
+              onClick={() => setAnexos((l) => l.filter((x) => x.id !== a.id))}>{a.id} <X size={10} /></button>
+          ))}
           {pin && <button type="button" className="pin-chip" title="Tirar o ponto" onClick={() => setPin(null)}>{pin.t !== undefined ? mmss(pin.t) : '+'} <X size={10} /></button>}
-          <textarea ref={entrada} rows={2} value={texto} placeholder={pin ? 'Sobre este ponto…' : 'Comentar…'}
+          <textarea ref={entrada} rows={2} value={texto} placeholder={pin ? 'Sobre este ponto…' : 'Comentar… (cole ou solte um arquivo para anexar)'}
             onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarComentario() } }} />
+            onPaste={(e) => { const arquivos = [...e.clipboardData.files]; if (arquivos.length) { e.preventDefault(); anexar(arquivos) } }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.shiftKey) return
+              e.preventDefault()
+              if (e.metaKey || e.ctrlKey) enviarPedido()
+              else enviarComentario()
+            }} />
+          {aceitaPedido && (
+            <button type="button" className="enviar pedido" disabled={!texto.trim()} onClick={enviarPedido}
+              title="Enviar ao Claude como pedido (⌘↵): esta imagem e os anexos viram as entradas, o texto vira a intenção"><Sparkles size={15} /></button>
+          )}
           <button type="button" className="enviar" disabled={!texto.trim()} onClick={enviarComentario} title="Comentar (↵)"><ArrowUp size={15} /></button>
         </div>
       </aside>

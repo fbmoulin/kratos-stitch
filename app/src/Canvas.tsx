@@ -8,7 +8,7 @@ import {
   Focus, LayoutGrid, Settings, ListFilter, CornerLeftUp, Layers, Palette, Box, Image as ImageIcon, MessageSquareText, PanelsTopLeft, AlignVerticalDistributeCenter, Maximize, Maximize2, Monitor, Trash2, UnfoldHorizontal, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, arquivoUrl, dinheiro, rotaVista, type Estado, type No } from './api'
+import { ACEITA_MIDIA, api, arquivoUrl, dinheiro, ehMidia, rotaVista, type Estado, type No } from './api'
 import { CanvasCtx, type Ctx } from './ctx'
 import { Config } from './Config'
 import { arestas, arvore, filtrarArvore, caminhoAprovadas, descendentes, ehPonto, PONTO, galhoCompleto, layoutArvore, medida, nosDeSite, ocultosSob, recorte, type ModoLayout } from './layout'
@@ -469,7 +469,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   // colar (⌘V) ou soltar imagens no canvas → referências
   const subir = useCallback(
     async (arquivos: File[], onde?: { x: number; y: number }) => {
-      const imgs = arquivos.filter((f) => f.type.startsWith('image/'))
+      const imgs = arquivos.filter(ehMidia)   // imagens e vídeos (o vídeo vira a capa e um cartão por quadro)
       if (!imgs.length) return
       // onde o mouse está (⌘V cola embaixo do cursor); fora do canvas, no centro da tela
       const tela = mouse.current || { x: window.innerWidth / 2, y: window.innerHeight / 2 }
@@ -1052,7 +1052,7 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
           )
         })()}
         {menu && <Menu x={menu.x} y={menu.y} itens={itensMenu(menu)} fechar={() => setMenu(null)} />}
-        <input ref={arquivo} type="file" accept="image/*" multiple hidden
+        <input ref={arquivo} type="file" accept={ACEITA_MIDIA} multiple hidden
           onChange={(e) => { subir([...(e.target.files || [])], ondeSubir.current); e.target.value = '' }} />
       </div>
     </CanvasCtx.Provider>

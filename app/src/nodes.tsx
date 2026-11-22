@@ -579,7 +579,9 @@ export const RefNode = memo(function RefNode({ data, selected }: NodeProps<NoRF>
         <div className="quadro" style={{ height: h }}>
         <img src={arquivoUrl(slug, no.thumb || no.arquivo)} alt={no.titulo} draggable={false} />
         <Nitida no={no} w={w} />
-        <span className="marca refm" title="Referência"><Link2 size={12} /></span>
+        <span className="marca refm" title={no.video ? 'Vídeo de referência (duplo clique para assistir)' : 'Referência'}>
+          {no.video ? <Clapperboard size={12} /> : <Link2 size={12} />}
+        </span>
         <div className="acoes">
           <BotaoGalho no={no} />
           <BotaoAbrir no={no} />

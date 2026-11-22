@@ -45,6 +45,10 @@ export type No = {
   duracao?: number
   segundos?: number
   // imagem / referência
+  video?: string         // referência que é um vídeo próprio: o arquivo (o `arquivo` é a capa)
+  quadros?: string[]     // os quadros extraídos dele, cada um uma referência
+  de?: string            // quadro: o vídeo de onde saiu
+  t?: number             // quadro: o segundo
   pedido?: string
   giro?: number     // modelo 3D: graus para ficar de frente no visualizador
   nome?: string
@@ -137,6 +141,12 @@ async function req<T>(metodo: string, url: string, corpo?: unknown, cabecalhos?:
 
 const P = (slug: string) => `/api/projetos/${slug}`
 
+/** O que o canvas aceita como referência: imagens e os vídeos que o servidor sabe abrir. */
+export const VIDEOS_ACEITOS = ['video/mp4', 'video/quicktime', 'video/webm']
+export const ACEITA_MIDIA = `image/*,${VIDEOS_ACEITOS.join(',')}`
+export const ehMidia = (f: File) => f.type.startsWith('image/') || VIDEOS_ACEITOS.includes(f.type)
+const LIMITE_MB = 200
+
 export const api = {
   projetos: () => req<ResumoProjeto[]>('GET', '/api/projetos'),
   mudarImpl: (slug: string, img: string, versao: string, estado: Estado) => req<Trabalho>('PATCH', `${P(slug)}/impl/${img}/${versao}`, { estado }),
@@ -164,7 +174,7 @@ export const api = {
     req<Comentario>('POST', `${P(slug)}/nos/${id}/comentarios`, { texto, pin }),
   apagarComentario: (slug: string, id: string, cid: string) => req('DELETE', `${P(slug)}/nos/${id}/comentarios/${cid}`),
   subirRef: (slug: string, arquivo: File | Blob, nome: string, pos?: Pos, tela?: string) =>
-    req<No>('POST', `${P(slug)}/refs`, arquivo, {
+    arquivo.size > LIMITE_MB * 1024 * 1024 ? Promise.reject(new Error(`Arquivo grande demais (o limite é ${LIMITE_MB} MB).`)) : req<No>('POST', `${P(slug)}/refs`, arquivo, {
       'Content-Type': arquivo.type || 'image/png',
       'X-Nome': encodeURIComponent(nome),
       ...(pos ? { 'X-Pos': `${Math.round(pos.x)},${Math.round(pos.y)}` } : {}),

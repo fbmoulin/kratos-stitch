@@ -426,7 +426,8 @@ span.chip { cursor: default; }
 .comentario .num.geral { background: var(--linha-forte); }
 .comentario .ico { opacity: 0; width: 22px; height: 22px; }
 .comentario:hover .ico { opacity: 1; }
-.comentar { display: flex; align-items: flex-end; gap: 6px; padding: 6px; border: 1px solid var(--linha-forte); border-radius: 14px; }
+.comentar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; padding: 6px; border: 1px solid var(--linha-forte); border-radius: 14px; }
+.comentar .enviar.pedido { background: var(--superficie); color: var(--acento); border: 1px solid var(--acento); }
 .comentar:focus-within { border-color: var(--acento); }
 .comentar textarea { flex: 1; resize: none; border: 0; outline: 0; padding: 6px; font-size: 13px; line-height: 1.4; background: transparent; }
 .pin-chip { display: inline-flex; align-items: center; gap: 2px; height: 24px; margin: 4px 0 4px 2px; padding: 0 6px; border-radius: 8px; border: 1.5px solid var(--acento); background: var(--acento-suave); color: var(--acento); font-size: 12px; font-weight: 600; }
