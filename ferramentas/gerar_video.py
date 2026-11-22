@@ -84,7 +84,7 @@ def sondar(arq: Path) -> dict | None:
     o arquivo não for um vídeo."""
     if not shutil.which('ffprobe'):
         return None
-    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,width,height:stream_disposition=attached_pic',
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
                         '-of', 'json', str(arq)], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=60)
     try:
         faixas = json.loads(r.stdout).get('streams') or []
@@ -95,7 +95,11 @@ def sondar(arq: Path) -> dict | None:
                   and not (f.get('disposition') or {}).get('attached_pic')), None)
     if not video:
         return None
-    return {'largura': video['width'], 'altura': video['height'], 'audio': any(f.get('codec_type') == 'audio' for f in faixas)}
+    largura, altura = video['width'], video['height']
+    giro = next((d['rotation'] for d in video.get('side_data_list') or [] if isinstance(d.get('rotation'), (int, float))), 0)
+    if abs(giro) % 180 == 90:   # gravado deitado com a ordem de girar: o que se vê é o lado trocado (a capa já sai assim)
+        largura, altura = altura, largura
+    return {'largura': largura, 'altura': altura, 'audio': any(f.get('codec_type') == 'audio' for f in faixas)}
 
 
 def tirar_audio(arq: Path) -> None:

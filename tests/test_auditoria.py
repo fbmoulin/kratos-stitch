@@ -922,6 +922,17 @@ class VideoBaixado(Isolado):
         with mock.patch.object(self.gv.subprocess, 'run', lambda *a, **k: saida):
             self.assertEqual(self.gv.sondar(self.mp4), {'largura': 320, 'altura': 180, 'audio': True})
 
+    def test_video_girado_usa_as_dimensoes_de_exibicao(self):
+        # o arquivo codifica 320×180 e manda girar 90°: quem assiste vê 180×320 (a saída do ffprobe é dada à mão)
+        import subprocess
+        for giro, esperado in ((-90, (180, 320)), (90, (180, 320)), (270, (180, 320)), (180, (320, 180)), (0, (320, 180))):
+            faixas = [{'codec_type': 'video', 'width': 320, 'height': 180, 'disposition': {'attached_pic': 0},
+                       'side_data_list': [{}, {'rotation': giro}]}]
+            saida = subprocess.CompletedProcess([], 0, stdout=json.dumps({'streams': faixas}), stderr='')
+            with mock.patch.object(self.gv.subprocess, 'run', lambda *a, **k: saida):
+                r = self.gv.sondar(self.mp4)
+            self.assertEqual((r['largura'], r['altura']), esperado, giro)
+
     def test_falha_ao_baixar_nao_vira_video_pronto(self):
         slug = B.criar_projeto('Loja')['slug']
         with B.travado(slug):
