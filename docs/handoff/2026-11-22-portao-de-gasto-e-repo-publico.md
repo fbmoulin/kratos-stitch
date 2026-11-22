@@ -89,3 +89,67 @@ python3 -m unittest discover -s tests, gh repo view fbmoulin/kratos-stitch --jso
 O repositório é público; push só para o remoto kratos, nada para origin. Geração paga só com o meu ok no chat, por pedido.
 Pendente: confirmar se o "Novo projeto" funciona para mim, decidir o título "Kratos Stitch", e os itens 4 a 6 do handoff.
 ```
+
+---
+
+# Atualização (mesma data) — uso real no projeto `brain` e três funcionalidades novas
+
+## Estado medido
+
+| Item | Medição |
+|---|---|
+| Código | `d24826f` em `kratos/correcoes-auditoria` |
+| Testes | 103 OK; `ruff check ferramentas` 21; `oxlint` 9 |
+| CI | `success` em `29b916d` e `a6c51ed`; o de `d24826f` e o deste handoff: conferir com `gh run list` |
+| Servidor local | 127.0.0.1:8730, reiniciado com `d24826f` |
+| Gasto de API | projeto `brain`: US$ 1,30 em 2026-11-22 (15 imagens e 1 vídeo); `teste-e2e`: US$ 0,167, sem mudança |
+
+## O que o dono fez e o que foi atendido
+
+- Criou o projeto `brain` e mandou pedidos sem ninguém ouvindo. O ouvinte (`ferramentas/ouvir.sh` pelo Monitor) foi ligado
+  nesta sessão e re-armado a cada 30 minutos.
+- Gerados com ok no chat: `BRA-005` (3 imagens), `BRA-006` (6), `BRA-017` (mix, 3), `BRA-021` (3), `BRA-031` (mix com a
+  imagem e o vídeo dele, 3) e o vídeo `BRA-041` (Grok Imagine 1.5 Lite, 6 s, US$ 0,19).
+- Recusados por ele e devolvidos com `neo.py erro`: `BRA-004`, `BRA-026`, `BRA-027`, `BRA-037` (enviados sem texto).
+- Referências postas à mão no canvas a partir de `~/Downloads`: `BRA-028` (imagem dele), `BRA-029` e `BRA-030` (quadros do
+  vídeo dele).
+
+## Funcionalidades novas (ratificadas pelo dono; spec em `docs/specs/2026-11-22-comentario-pedido-e-video-de-referencia.md`)
+
+| SHA | O quê |
+|---|---|
+| `29b916d` | Servidor: vídeo próprio como referência (capa, arquivo, um quadro por segundo até 16) e limite de 200 MB |
+| `a6c51ed` | App: vídeo no canvas e no visualizador, comentário que vira pedido (`⌘↵`), anexo no comentário |
+| `d24826f` | Correções da revisão independente do `a6c51ed` |
+
+Processo: spec → pre-mortem (REFINE) → rev2 → testes e implementação → navegador → revisão independente (achou 2
+bloqueantes: vídeo válido recusado e pedido duplicado) → correção com teste e mutação. **O `d24826f` não teve segunda
+revisão independente.** No navegador foram conferidos: soltar um mp4, o player da referência, `⌘↵` com anexo, e três
+`⌘↵` seguidos criando um pedido só. Não conferidos no navegador depois do `d24826f`: o upload de vídeo e o aviso de
+arquivo não aceito.
+
+## Em aberto (além da lista anterior)
+
+1. Achados da revisão não corrigidos: `Transfer-Encoding: chunked` sem `Content-Length` (anterior a esta sessão); vários
+   vídeos soltos de uma vez sobrepõem as grades de quadros; soltar um arquivo sobre o visualizador, fora da caixa de
+   comentário, sobe pelo canvas por trás (anterior); vídeo de horas pode segurar a requisição por muitos minutos; `.mov`
+   sem cache longo.
+2. Mutações que a revisão viu sobreviver e ficaram sem teste: troca de largura e altura na rotação do vídeo enviado, e
+   webm sem duração.
+3. O número máximo de imagens de referência que o modelo aceita num pedido não foi medido; o teto de 16 quadros é escolha
+   da spec.
+4. O custo por imagem variou de US$ 0,03 a US$ 0,15 no mesmo modelo e resolução, sem causa identificada; a estimativa do
+   portão (US$ 0,14 por imagem) superestimou em quase todos os casos.
+5. No projeto `brain` ficaram rascunhos vazios (`BRA-016`, `BRA-025`, `BRA-035`, `BRA-036`) criados pelo dono.
+6. Título "Kratos Stitch": ainda sem resposta.
+
+## Prompt de retomada
+
+```
+Leia docs/handoff/2026-11-22-portao-de-gasto-e-repo-publico.md inteiro (inclusive a Atualização) em
+/Users/felipemoulin/Projetos/neo-stitch. Meça antes de confiar: git status, git log -3,
+gh run list -R fbmoulin/kratos-stitch --limit 3, python3 -m unittest discover -s tests, lsof na 8730.
+Se eu for usar o canvas: suba o servidor (uv run ferramentas/servidor.py), ligue o ouvinte da fila pelo Monitor
+(ferramentas/ouvir.sh, re-armar a cada 30 min) e rode neo.py pendentes. Geração paga só com o meu ok no chat, por
+pedido, com a estimativa. Push só para o remoto kratos.
+```
