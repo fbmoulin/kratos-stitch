@@ -74,6 +74,8 @@ O pedido nasce no canvas e mantém a linhagem. Projeto novo pelo chat: `neo.py n
 
 - Marcar: `neo.py estado JAR-042 JAR-051 descartada|neutra`, quando o usuário descartar pelo chat. O que importa ele pina no app (não há mais "aprovar").
 - Responder um comentário: `neo.py comentar JAR-042 "…" [--pin x,y]`. Aparece como pin escuro (do Claude) no visualizador.
+- Comentário enviado como pedido (`⌘↵` no visualizador): chega pela fila como um pedido comum, com a imagem comentada e os anexos nas `entradas` e o texto na `intencao`; o comentário fica na imagem com o sufixo `[pedido <id>]`. Comentário simples com anexo traz `[anexos: <ids>]`. Um comentário sem esses sufixos não entrou na fila: não é pedido.
+- Referência que é vídeo do usuário: o nó tem `video` e `quadros`; como entrada de um pedido ele vale pela capa. Os quadros (`de`, `t`) são referências comuns.
 - Ver o projeto inteiro: `neo.py ver <slug>`, uma árvore compacta com estados e comentários.
 - Brief: `neo.py brief <slug>` lê; `--arquivo novo.md` troca.
 - Design system: monte a pasta fora de `impl/` (skill `extract-ds`) e registre com `neo.py ds <slug> <pasta> --nome "…" --de JCO-193/v1,JCO-194/v1 --capa capa.png --custo 0`. Passo a passo: `docs/AGENTES.md`, seção 11.

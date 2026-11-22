@@ -466,10 +466,11 @@ function CanvasInterno({ slug, raiz }: { slug: string; raiz?: string }) {
   }, [aviso])
 
   const cobertoRef = useRef(false)  // o `coberto` (mais abaixo) para o handler de colar
-  // colar (⌘V) ou soltar imagens no canvas → referências
+  // colar (⌘V) ou soltar imagens e vídeos no canvas → referências
   const subir = useCallback(
     async (arquivos: File[], onde?: { x: number; y: number }) => {
       const imgs = arquivos.filter(ehMidia)   // imagens e vídeos (o vídeo vira a capa e um cartão por quadro)
+      if (imgs.length < arquivos.length) setAviso('Só imagens e vídeos mp4, mov ou webm')
       if (!imgs.length) return
       // onde o mouse está (⌘V cola embaixo do cursor); fora do canvas, no centro da tela
       const tela = mouse.current || { x: window.innerWidth / 2, y: window.innerHeight / 2 }

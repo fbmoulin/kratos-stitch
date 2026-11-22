@@ -158,7 +158,7 @@ Para mexer no app com recarga instantânea: `npm --prefix app run dev` (porta 51
 | `⌘A` | Só o caminho até os pinados |
 | `⌘1` `⌘2` `⌘3` (ou `1` `2` `3`) | Mostra uma, duas ou três gerações |
 | `⌘Z` · `⌘⇧Z` | Desfaz · refaz |
-| `⌘V` | Cola uma imagem como referência, embaixo do cursor |
+| `⌘V` | Cola uma imagem (ou um vídeo mp4, mov, webm) como referência, embaixo do cursor |
 | roda do mouse · arrastar | Zoom · navegar |
 | `⌘` + arrastar · `⌘` + clique | Caixa de seleção · põe/tira da seleção |
 | botão do meio num nó | Enquadra a família dele (dois cliques no vazio: tudo) |

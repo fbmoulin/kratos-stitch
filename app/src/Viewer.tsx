@@ -13,6 +13,14 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
   const temPlayer = ehVideo || !!no.video   // o vídeo gerado e a referência que é um vídeo próprio
   const aceitaPedido = no.tipo === 'imagem' || no.tipo === 'referencia'
   const [anexos, setAnexos] = useState<No[]>([])   // arquivos colados ou soltos na caixa de comentário, já no canvas como referências
+  const [ocupado, setOcupado] = useState(0)        // envios e anexos em andamento: enquanto houver, a caixa não envia de novo
+  const ocupadoRef = useRef(0)
+  const idRef = useRef(id)
+  const durante = async (fn: () => Promise<void>) => {
+    ocupadoRef.current += 1
+    setOcupado(ocupadoRef.current)
+    try { await fn() } finally { ocupadoRef.current -= 1; setOcupado(ocupadoRef.current) }
+  }
   const videoRef = useRef<HTMLVideoElement>(null)
   const [tempo, setTempo] = useState(0)
   const [rodando, setRodando] = useState(true)
@@ -63,7 +71,7 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
   const comentarios = no.comentarios || []
   const pins = comentarios.filter((c) => c.pin)
 
-  useEffect(() => { setPin(null); setTexto(''); setFoco(null); setAnexos([]) }, [id])
+  useEffect(() => { idRef.current = id; setPin(null); setTexto(''); setFoco(null); setAnexos([]) }, [id])
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
@@ -95,23 +103,29 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
   }
   // o comentário como pedido ao Claude: o rascunho (esta imagem e os anexos como entradas, o texto como intenção), o
   // comentário e só então o envio, para o Claude já achar tudo quando a linha chega à fila
-  const enviarPedido = async () => {
-    if (!texto.trim() || !aceitaPedido) return
-    const tela = projeto.nos.find((n) => n.tipo === 'tela')?.id
-    const p = await acao(() => api.criarNo(slug, { tipo: 'pedido', tela, entradas: [no.id, ...anexos.map((a) => a.id)], intencao: texto.trim() }))
-    if (!p) return
-    await acao(() => api.comentar(slug, no.id, `${texto.trim()} [pedido ${p.id}]`, pin))
-    if ((await acao(() => api.enviar(slug, p.id))) === undefined) return
-    setTexto('')
-    setPin(null)
-    setAnexos([])
+  const enviarPedido = () => {
+    if (!texto.trim() || ocupadoRef.current) return   // um ⌘↵ repetido (ou com um anexo ainda subindo) não cria outro pedido
+    if (!aceitaPedido) return enviarComentario()      // no vídeo gerado não há pedido de imagem: ⌘↵ comenta, como sempre
+    return durante(async () => {
+      const tela = projeto.nos.find((n) => n.tipo === 'tela')?.id
+      const p = await acao(() => api.criarNo(slug, { tipo: 'pedido', tela, entradas: [no.id, ...anexos.map((a) => a.id)], intencao: texto.trim() }))
+      if (!p) return
+      // enviado ou não, o texto já virou o pedido p (se o envio falhar, ele fica no canvas como rascunho): a caixa limpa,
+      // senão um novo ⌘↵ criaria outro
+      await acao(() => api.comentar(slug, no.id, `${texto.trim()} [pedido ${p.id}]`, pin))
+      await acao(() => api.enviar(slug, p.id))
+      setTexto('')
+      setPin(null)
+      setAnexos([])
+    })
   }
-  const anexar = async (arquivos: File[]) => {
+  const anexar = (arquivos: File[]) => durante(async () => {
+    const daqui = id
     for (const f of arquivos.filter(ehMidia)) {
       const r = await acao(() => api.subirRef(slug, f, f.name || 'colada'))
-      if (r) setAnexos((a) => [...a, r])
+      if (r && idRef.current === daqui) setAnexos((a) => [...a, r])   // trocou de imagem no meio: a referência fica só no canvas
     }
-  }
+  })
 
   const clicarImagem = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation()  // clicar na imagem marca um ponto; clicar no fundo volta ao canvas
@@ -289,15 +303,16 @@ export function Viewer({ id, fechar, navegar }: { id: string; fechar: () => void
           {pin && <button type="button" className="pin-chip" title="Tirar o ponto" onClick={() => setPin(null)}>{pin.t !== undefined ? mmss(pin.t) : '+'} <X size={10} /></button>}
           <textarea ref={entrada} rows={2} value={texto} placeholder={pin ? 'Sobre este ponto…' : 'Comentar… (cole ou solte um arquivo para anexar)'}
             onChange={(e) => setTexto(e.target.value)}
-            onPaste={(e) => { const arquivos = [...e.clipboardData.files]; if (arquivos.length) { e.preventDefault(); anexar(arquivos) } }}
+            onPaste={(e) => { const arquivos = [...e.clipboardData.files].filter(ehMidia); if (arquivos.length) { e.preventDefault(); anexar(arquivos) } }}
             onKeyDown={(e) => {
               if (e.key !== 'Enter' || e.shiftKey) return
               e.preventDefault()
+              if (e.repeat) return
               if (e.metaKey || e.ctrlKey) enviarPedido()
               else enviarComentario()
             }} />
           {aceitaPedido && (
-            <button type="button" className="enviar pedido" disabled={!texto.trim()} onClick={enviarPedido}
+            <button type="button" className="enviar pedido" disabled={!texto.trim() || ocupado > 0} onClick={enviarPedido}
               title="Enviar ao Claude como pedido (⌘↵): esta imagem e os anexos viram as entradas, o texto vira a intenção"><Sparkles size={15} /></button>
           )}
           <button type="button" className="enviar" disabled={!texto.trim()} onClick={enviarComentario} title="Comentar (↵)"><ArrowUp size={15} /></button>

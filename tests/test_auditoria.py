@@ -696,22 +696,69 @@ class VideoDeReferencia(Api):
         self.assertIn('ffmpeg', resposta['erro'])
         self.assertEqual((self.refs(), self.arquivos()), ([], []))
 
-    def test_quadro_que_falha_nao_deixa_nada_pela_metade(self):
+    def test_instante_sem_quadro_e_pulado_e_o_video_entra(self):
+        # a duração é a do arquivo; a imagem pode acabar antes (1 quadro por segundo, áudio mais longo que o vídeo)
+        import subprocess
+        lento = self.raiz / 'lento.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=160x90:r=1:d=10', '-c:v', 'mpeg4', str(lento)], check=True)
+        audio_longo = self.raiz / 'audio.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=160x90:r=10:d=2', '-f', 'lavfi', '-i', 'sine=d=10',
+                        '-c:v', 'mpeg4', '-c:a', 'aac', str(audio_longo)], check=True)
+        for arq in (lento, audio_longo):
+            status, video = self.subir(arq.read_bytes(), 'video/mp4')
+            self.assertEqual(status, 200, video)
+            self.assertTrue(1 <= len(video['quadros']) <= 10, video['quadros'])
+            for i in [video['id'], *video['quadros']]:
+                self.assertTrue((B.pasta(self.slug) / B.ler_no(self.slug, i)['arquivo']).stat().st_size)
+
+    def test_video_sem_nenhum_quadro_nao_entra(self):
         import subprocess
         de_verdade = subprocess.run
-        chamadas = []
 
-        def falha_no_terceiro(cmd, *a, **k):
-            if cmd[0] == 'ffmpeg':
-                chamadas.append(cmd)
-                if len(chamadas) == 3:
-                    return subprocess.CompletedProcess(cmd, 234, b'', b'')
-            return de_verdade(cmd, *a, **k)
+        def sem_ffmpeg_util(cmd, *a, **k):
+            return subprocess.CompletedProcess(cmd, 234, b'', b'') if cmd[0] == 'ffmpeg' else de_verdade(cmd, *a, **k)
         dados = self.clipe(4)
-        with mock.patch.object(servidor.subprocess, 'run', falha_no_terceiro):
+        with mock.patch.object(servidor.subprocess, 'run', sem_ffmpeg_util):
             status, resposta = self.subir(dados, 'video/mp4')
         self.assertEqual(status, 422, resposta)
         self.assertEqual((self.refs(), self.arquivos()), ([], []))
+
+    def test_falha_ao_gravar_nao_deixa_no_nem_arquivo(self):
+        de_verdade = shutil.move
+        movidos = []
+
+        def disco_cheio(origem, destino):
+            movidos.append(destino)
+            if len(movidos) == 4:   # a capa, o vídeo e dois quadros já estavam no lugar
+                raise OSError('disco cheio')
+            return de_verdade(origem, destino)
+        dados = self.clipe(6)
+        with mock.patch.object(servidor.shutil, 'move', disco_cheio):
+            status, resposta = self.subir(dados, 'video/mp4')
+        self.assertEqual(status, 500, resposta)
+        self.assertEqual((self.refs(), self.arquivos()), ([], []))
+        self.assertEqual(list((B.pasta(self.slug) / 'thumbs').glob('*')), [])
+
+    def test_tipo_desconhecido_e_tamanho_invalido_sao_recusados(self):
+        self.assertEqual(self.subir(b'abc', 'text/plain')[0], 422)
+        self.assertEqual(self.subir(b'', 'video/mp4')[0], 422)
+        import socket
+        for tamanho in ('-1', 'abc'):
+            s = socket.create_connection(('127.0.0.1', self.porta), timeout=10)
+            s.sendall(f'POST {self.url} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: image/png\r\nContent-Length: {tamanho}\r\n\r\n'.encode() + base64.b64decode(PNG))
+            s.shutdown(socket.SHUT_WR)
+            resposta = b''
+            with contextlib.suppress(OSError):
+                while bloco := s.recv(65536):
+                    resposta += bloco
+            s.close()
+            self.assertIn(b' 400 ', resposta.split(b'\r\n')[0], tamanho)
+        self.assertEqual((self.refs(), self.arquivos()), ([], []))
+
+    def test_a_tela_do_canvas_vai_para_o_video_e_para_os_quadros(self):
+        status, video = self.subir(self.clipe(2), 'video/mp4', **{'X-Tela': 'LOJ-002'})
+        self.assertEqual((status, video['tela']), (200, 'LOJ-002'))
+        self.assertEqual({B.ler_no(self.slug, i)['tela'] for i in video['quadros']}, {'LOJ-002'})
 
     def test_corpo_acima_do_limite_e_recusado_sem_ser_lido(self):
         import socket

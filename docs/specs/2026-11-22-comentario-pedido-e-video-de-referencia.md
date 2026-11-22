@@ -39,9 +39,11 @@ rota nova; o pedido segue o portão de gasto.
   não devolve quadro), um `-ss` por quadro. Cada um é um nó `referencia` comum, com `titulo` "<nome> · m:ss", `de` e `t`.
   Largura e altura vêm do ffprobe, com a rotação aplicada. Com posição (soltar, colar), os quadros ficam em grade de 4 por
   linha à direita do vídeo; sem posição, o canvas os empilha como faz com qualquer referência solta.
-- **Tudo ou nada, fora da trava:** sondar e extrair num diretório temporário, sem a trava do projeto (a extração leva
-  segundos e a trava seguraria toda escrita); só então travar, criar os nós, mover os arquivos e gravar. Se qualquer
-  quadro faltar, nada é criado.
+- **Fora da trava, sem nó órfão:** sondar e extrair num diretório temporário, sem a trava do projeto (a extração leva
+  segundos e a trava seguraria toda escrita); só então travar, criar os nós, mover os arquivos e gravar. Um instante sem
+  quadro é pulado (a duração é a do arquivo, e a imagem pode acabar antes: áudio mais longo, 1 quadro por segundo); sem
+  nenhum quadro, o vídeo é recusado. Se algo falhar ao gravar, os nós e arquivos desta chamada são removidos.
+  (Corrigido depois da revisão do `a6c51ed`, que reproduziu vídeos válidos sendo recusados.)
 - Apagar o vídeo não apaga os quadros: são referências independentes, e o `de` que sobra é só um rótulo.
 - App: `subir` e o seletor aceitam vídeo; o cartão mostra a marca de vídeo; o visualizador toca `no.video` quando o nó o
   tem. O teto de 16 é a escolha desta spec para "o máximo aplicável": extrair é grátis, ligar custa, e o limite do modelo

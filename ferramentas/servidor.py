@@ -574,12 +574,12 @@ def extrair_video(origem: Path, pasta: Path) -> dict:
     falta = [b for b in ('ffmpeg', 'ffprobe') if not shutil.which(b)]
     if falta:
         raise Erro(f'Para subir um vídeo é preciso ter o ffmpeg instalado (falta: {", ".join(falta)}).')
-    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries',
-                        'format=format_name,duration:stream=codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
-                        '-of', 'json', str(origem)], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=60)
     try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries',
+                            'format=format_name,duration:stream=codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
+                            '-of', 'json', str(origem)], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=60)
         info = json.loads(r.stdout)
-    except ValueError:
+    except (ValueError, subprocess.TimeoutExpired):
         info = {}
     formato = info.get('format') or {}
     faixa = next((f for f in info.get('streams') or [] if f.get('codec_type') == 'video' and f.get('width') and f.get('height')
@@ -598,17 +598,22 @@ def extrair_video(origem: Path, pasta: Path) -> dict:
     if abs(giro) % 180 == 90:
         largura, altura = altura, largura
 
-    def quadro(t: float, destino: Path) -> Path:
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', f'{t:.3f}', '-i', str(origem), '-frames:v', '1', '-q:v', '2', str(destino)],
-                       capture_output=True, check=False, stdin=subprocess.DEVNULL, timeout=120)
-        if not destino.exists() or not destino.stat().st_size:
-            raise Erro('Não consegui extrair os quadros do vídeo.')
-        return destino
+    def quadro(t: float, destino: Path) -> Path | None:
+        """None quando não há quadro naquele instante: a duração é a do arquivo, e a imagem pode acabar antes (áudio mais
+        longo, último quadro parado, 1 quadro por segundo)."""
+        try:
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-ss', f'{t:.3f}', '-i', str(origem), '-frames:v', '1', '-q:v', '2', str(destino)],
+                           capture_output=True, check=False, stdin=subprocess.DEVNULL, timeout=120)
+        except subprocess.TimeoutExpired:
+            return None
+        return destino if destino.exists() and destino.stat().st_size else None
     n = min(QUADROS_MAX, max(1, round(dur)))
-    tempos = [round(dur * i / (n + 1), 2) for i in range(1, n + 1)]   # nunca o último instante: ali o ffmpeg não devolve quadro
-    return {'duracao': round(dur, 2), 'largura': largura, 'altura': altura, 'capa': quadro(dur / 2, pasta / 'capa.jpg'),
-            'quadros': [(t, quadro(t, pasta / f'q{i:02d}.jpg')) for i, t in enumerate(tempos)]}
-
+    tempos = [round(dur * i / (n + 1), 2) for i in range(1, n + 1)]
+    quadros = [(t, q) for i, t in enumerate(tempos) if (q := quadro(t, pasta / f'q{i:02d}.jpg'))]
+    capa = quadro(dur / 2, pasta / 'capa.jpg') or quadro(0, pasta / 'capa.jpg')
+    if not capa:
+        raise Erro('Não consegui extrair nenhum quadro do vídeo.')
+    return {'duracao': round(dur, 2), 'largura': largura, 'altura': altura, 'capa': capa, 'quadros': quadros}
 
 def subir_video(slug: str, ext: str, dados: bytes, titulo: str, pos: dict | None, tela: str | None) -> dict:
     """O vídeo de referência: um nó `referencia` cujo `arquivo` é a capa (quem lê referências segue lendo uma imagem) e
@@ -625,8 +630,11 @@ def subir_video(slug: str, ext: str, dados: bytes, titulo: str, pos: dict | None
             refs = B.pasta(slug) / 'refs'
             refs.mkdir(parents=True, exist_ok=True)
 
+            criados: list[str] = []
+
             def no_com(arquivo: Path, **campos) -> dict:
                 no = B.novo_no(slug, 'referencia', tela=tela, largura=v['largura'], altura=v['altura'], **campos)
+                criados.append(no['id'])
                 shutil.move(arquivo, refs / f'{no["id"]}.jpg')
                 no['arquivo'] = f'refs/{no["id"]}.jpg'
                 try:
@@ -635,16 +643,24 @@ def subir_video(slug: str, ext: str, dados: bytes, titulo: str, pos: dict | None
                 except Exception:  # noqa: BLE001, S110
                     pass   # sem miniatura o canvas usa o próprio arquivo
                 return no
-            video = no_com(v['capa'], titulo=titulo, pos=pos, duracao=v['duracao'])
-            shutil.move(origem, refs / f'{video["id"]}.{ext}')
-            video['video'] = f'refs/{video["id"]}.{ext}'
-            ids = []
-            for i, (t, arq) in enumerate(v['quadros']):
-                onde = pos and {'x': pos['x'] + passo_x * (1 + i % 4), 'y': pos['y'] + passo_y * (i // 4)}
-                q = no_com(arq, titulo=f'{titulo[:50]} · {int(t) // 60}:{int(t) % 60:02d}', pos=onde, de=video['id'], t=t)
-                ids.append(B.gravar_no(slug, q)['id'])
-            video['quadros'] = ids
-            return B.gravar_no(slug, video)
+            try:
+                video = no_com(v['capa'], titulo=titulo, pos=pos, duracao=v['duracao'])
+                shutil.move(origem, refs / f'{video["id"]}.{ext}')
+                video['video'] = f'refs/{video["id"]}.{ext}'
+                ids = []
+                for i, (t, arq) in enumerate(v['quadros']):
+                    onde = pos and {'x': pos['x'] + passo_x * (1 + i % 4), 'y': pos['y'] + passo_y * (i // 4)}
+                    q = no_com(arq, titulo=f'{titulo[:50]} · {int(t) // 60}:{int(t) % 60:02d}', pos=onde, de=video['id'], t=t)
+                    ids.append(B.gravar_no(slug, q)['id'])
+                video['quadros'] = ids
+                return B.gravar_no(slug, video)
+            except Exception:
+                # disco cheio no meio: os nós desta chamada acabaram de nascer e ninguém os usa; saem, com os arquivos deles
+                for i in criados:
+                    B.caminho_no(slug, i).unlink(missing_ok=True)
+                    for f in [*refs.glob(f'{i}.*'), *(B.pasta(slug) / 'thumbs').glob(f'{i}.*')]:
+                        f.unlink(missing_ok=True)
+                raise
 
 
 # ---------- HTTP ----------
@@ -676,7 +692,14 @@ class Handler(SimpleHTTPRequestHandler):
     def api(self, metodo: str) -> None:
         url = urlparse(self.path)
         self.query = parse_qs(url.query)
-        n = int(self.headers.get('Content-Length') or 0)
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            n = -1
+        if n < 0:   # tamanho que não dá para confiar: não se lê nada, e a conexão fecha
+            self.close_connection = True
+            self.responder(400, {'erro': 'Content-Length inválido.'})
+            return
         if n > LIMITE_CORPO:
             # sem ler o corpo, a conexão tem de fechar: o que sobrasse nela seria atendido como outra requisição
             self.close_connection = True

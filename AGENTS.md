@@ -45,7 +45,7 @@ rode `python3 -m unittest discover -s tests` antes de terminar.
 | Tipo de nó | O que é | Como nasce |
 |---|---|---|
 | `brief`, `tela` | o começo do projeto e as telas que ele pede | `neo.py novo`, `neo.py tela` |
-| `referencia` | uma imagem colada pelo usuário | pelo app |
+| `referencia` | uma imagem ou um vídeo do usuário (o vídeo: a capa em `arquivo`, o arquivo em `video`, e um nó por quadro com `de` e `t`) | pelo app |
 | `imagem` | uma tela gerada (uma ideia de interface) | `gerar.py` (de um pedido) |
 | `imagem` com `asset: true` | um **asset**: imagem gerada durante uma página para ser usada nela (placa de fundo, personagem limpo, textura, thumbnails sem texto). No app, é a categoria "Assets", separada das telas | `impl.py asset` (só ele) |
 | `video` | um vídeo gerado de uma imagem | `gerar_video.py` (de um pedido de vídeo) |
