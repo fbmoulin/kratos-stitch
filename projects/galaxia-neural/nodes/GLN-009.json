@@ -1,0 +1,42 @@
+{
+ "id": "GLN-009",
+ "tipo": "pedido",
+ "criado": "2026-11-22T08:36:58",
+ "pos": null,
+ "comentarios": [],
+ "tela": "GLN-002",
+ "entradas": [
+  "GLN-004",
+  "GLN-006"
+ ],
+ "intencao": "Da visão Órbita à superfície de Projetos, com painéis em vidro fumê translúcido e reflexos dourados.",
+ "quantidade": 3,
+ "midia": "imagem",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "resolucao": "1K",
+ "literal": false,
+ "status": "concluido",
+ "saidas": [
+  "GLN-010",
+  "GLN-011",
+  "GLN-012"
+ ],
+ "atualizado": "2026-11-22T08:36:59",
+ "variacoes": [
+  {
+   "nome": "01 · Órbita",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. 01 · Órbita — Galáxia inteira, com cinco destinos e painéis de vidro translúcido."
+  },
+  {
+   "nome": "02 · Aproximação",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. 02 · Aproximação — Projetos em primeiro plano, com núcleo da galáxia ao fundo."
+  },
+  {
+   "nome": "03 · Superfície",
+   "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. 03 · Superfície — Horizonte em eclipse, relevo escuro e conexões douradas visíveis na superfície."
+  }
+ ],
+ "concluido_em": "2026-11-22T08:36:59",
+ "custo": 0
+}

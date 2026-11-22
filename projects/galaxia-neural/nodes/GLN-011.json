@@ -1,0 +1,19 @@
+{
+ "id": "GLN-011",
+ "tipo": "imagem",
+ "criado": "2026-11-22T08:36:58",
+ "pos": null,
+ "comentarios": [],
+ "pedido": "GLN-009",
+ "nome": "02 · Aproximação",
+ "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. 02 · Aproximação — Projetos em primeiro plano, com núcleo da galáxia ao fundo.",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "estado": "neutra",
+ "atualizado": "2026-11-22T08:36:59",
+ "arquivo": "images/GLN-011.jpg",
+ "thumb": "thumbs/GLN-011.jpg",
+ "largura": 1671,
+ "altura": 941,
+ "custo": 0
+}

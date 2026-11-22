@@ -1,0 +1,19 @@
+{
+ "id": "GLN-012",
+ "tipo": "imagem",
+ "criado": "2026-11-22T08:36:59",
+ "pos": null,
+ "comentarios": [],
+ "pedido": "GLN-009",
+ "nome": "03 · Superfície",
+ "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. 03 · Superfície — Horizonte em eclipse, relevo escuro e conexões douradas visíveis na superfície.",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "estado": "neutra",
+ "atualizado": "2026-11-22T08:36:59",
+ "arquivo": "images/GLN-012.jpg",
+ "thumb": "thumbs/GLN-012.jpg",
+ "largura": 1671,
+ "altura": 941,
+ "custo": 0
+}

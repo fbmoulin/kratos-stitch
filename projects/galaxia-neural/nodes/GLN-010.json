@@ -1,0 +1,19 @@
+{
+ "id": "GLN-010",
+ "tipo": "imagem",
+ "criado": "2026-11-22T08:36:58",
+ "pos": null,
+ "comentarios": [],
+ "pedido": "GLN-009",
+ "nome": "01 · Órbita",
+ "prompt": "Dashboard KRATOS em preto e dourado, e-mail e calendário à esquerda, chat à direita e arco superior de cinco skills. 01 · Órbita — Galáxia inteira, com cinco destinos e painéis de vidro translúcido.",
+ "modelo": "ChatGPT ImageGen",
+ "aspecto": "16:9",
+ "estado": "neutra",
+ "atualizado": "2026-11-22T08:36:58",
+ "arquivo": "images/GLN-010.jpg",
+ "thumb": "thumbs/GLN-010.jpg",
+ "largura": 1671,
+ "altura": 941,
+ "custo": 0
+}
